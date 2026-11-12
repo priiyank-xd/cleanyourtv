@@ -24,4 +24,5 @@
     <string name="lg_on_app" translatable="false">on %1$s</string>
     <string name="lg_find_it" translatable="false">Find it</string>
     <string name="lg_tmdb_credit" translatable="false">Data: TMDB</string>
+    <string name="lg_tmdb_notice" translatable="false">New this week and Trending come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
 </resources>

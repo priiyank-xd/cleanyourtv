@@ -90,7 +90,7 @@ final class LgHome {
     private final View[] quick = new View[QUICK];
     private String focus = "a0";
     private int slide, first;
-    private boolean resumed;
+    private boolean resumed, okDown;
 
     private final Runnable advance = new Runnable() {
         @Override public void run() {
@@ -166,11 +166,18 @@ final class LgHome {
                 : code == KeyEvent.KEYCODE_DPAD_UP ? LgNav.UP : code == KeyEvent.KEYCODE_DPAD_DOWN ? LgNav.DOWN : 0;
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
         if (dir == 0 && !ok) return false;
-        if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
         if (ok) {
-            if (e.getRepeatCount() == 0) activate();
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) okDown = true;
+            else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && okDown) {
+                okDown = false;
+                if (focus.equals("top1")) start(new Intent(act, LauncherSettingsActivity.class));
+            } else if (e.getAction() == KeyEvent.ACTION_UP && okDown) {
+                okDown = false;
+                activate();
+            }
             return true;
         }
+        if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
         if (focus.equals("feat") && dir == LgNav.LEFT && slide > 0) { showSlide(slide - 1); return true; }
         if (focus.equals("feat") && dir == LgNav.RIGHT && slide < slides.size() - 1) { showSlide(slide + 1); return true; }
         setFocus(LgNav.next(focus, dir, apps.size(), chips.size(), QUICK, first));
@@ -397,8 +404,8 @@ final class LgHome {
         if (slides.isEmpty()) return;
         int next = ((i % slides.size()) + slides.size()) % slides.size();
         if (next == slide && slideViews.get(next).getAlpha() == 1f) return;
-        slideViews.get(slide).animate().alpha(0f).setDuration(600).start();
-        slideViews.get(next).animate().alpha(1f).setDuration(600).start();
+        slideViews.get(slide).animate().alpha(0f).setDuration(ms(600)).start();
+        slideViews.get(next).animate().alpha(1f).setDuration(ms(600)).start();
         slide = next;
         paintDots();
     }
@@ -513,6 +520,7 @@ final class LgHome {
             kick.setAllCaps(true);
             kick.setLetterSpacing(0.14f);
             place(s, kick, 16, 14, 150, -1);
+            place(s, text(act.getString(R.string.lg_tmdb_credit), 9, R.string.font_regular, 0x80FFFFFF), 16, 30, 150, -1);
             LgApps.App on = appForProvider(t.provider);
             if (on != null) {
                 ImageView logo = new ImageView(act);
@@ -546,8 +554,8 @@ final class LgHome {
     private void showNew(int i) {
         if (newViews.isEmpty()) return;
         int next = ((i % newViews.size()) + newViews.size()) % newViews.size();
-        newViews.get(newIndex).animate().alpha(0f).setDuration(600).start();
-        newViews.get(next).animate().alpha(1f).setDuration(600).start();
+        newViews.get(newIndex).animate().alpha(0f).setDuration(ms(600)).start();
+        newViews.get(next).animate().alpha(1f).setDuration(ms(600)).start();
         newIndex = next;
         paintNewDots();
     }
@@ -640,7 +648,7 @@ final class LgHome {
             int f = LgNav.firstShown(n, apps.size(), VISIBLE);
             if (f != first) {
                 first = f;
-                strip.animate().translationX(-first * px(STEP)).setDuration(260).start();
+                strip.animate().translationX(-first * px(STEP)).setDuration(ms(260)).start();
             }
         }
     }
@@ -648,7 +656,7 @@ final class LgHome {
     private void paint(String key, View v, boolean on) {
         float scale = key.startsWith("a") ? 1.14f : key.startsWith("q") || key.startsWith("top") ? 1.08f
                 : key.startsWith("c") ? 1.04f : 1.03f;
-        v.animate().scaleX(on ? scale : 1f).scaleY(on ? scale : 1f).setDuration(220).start();
+        v.animate().scaleX(on ? scale : 1f).scaleY(on ? scale : 1f).setDuration(ms(220)).start();
         v.setElevation(on ? px(8) : 0);
         Float r = radii.get(key);
         if (!on) {
@@ -767,6 +775,17 @@ final class LgHome {
         o.inSampleSize = sample;
         o.inPreferredConfig = Bitmap.Config.RGB_565;
         return BitmapFactory.decodeFile(file.getPath(), o);
+    }
+
+    /** Animation length honouring the launcher's animations and reduced_motion settings. */
+    private long ms(long full) {
+        if (!cfg.animations) return 0;
+        return cfg.reducedMotion ? Math.min(full, Motion.REDUCED_MS) : full;
+    }
+
+    /** Frees the decoded backdrops while Home is hidden and Android asks for memory. */
+    void onTrimMemory(int level) {
+        if (!resumed && level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) art.clear();
     }
 
     // ---- small view helpers (design units to pixels) ----
