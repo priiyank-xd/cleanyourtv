@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#FF1C1C1E" />
+    <!-- Transparent (was #FF1C1C1E): tiles show the bare logo with no card behind it. -->
+    <solid android:color="#00000000" />
     <corners android:radius="16dp" />
 </shape>

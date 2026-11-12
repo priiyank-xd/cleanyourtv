@@ -92,6 +92,19 @@
     <!-- A tile's artwork instead of the app's banner: "package=drawable", a banner_* drawable bundled with the
          launcher (res/drawable). banner_tv is a magenta field with the Live TV glyph. -->
     <string-array name="app_banners">
+        <!-- Bare logos on a transparent background, bundled in res/drawable-nodpi. -->
+        <item>com.netflix.ninja=banner_netflix</item>
+        <item>com.amazon.amazonvideo.livingroom=banner_primevideo</item>
+        <item>com.google.android.youtube.tv=banner_youtube</item>
+        <item>in.startv.hotstar=banner_jiohotstar</item>
+        <item>com.android.vending=banner_playstore</item>
+        <item>com.google.android.youtube.tvmusic=banner_ytmusic</item>
+        <item>com.spotify.tv.android=banner_spotify</item>
+        <item>com.sonyliv=banner_sonyliv</item>
+        <item>com.graymatrix.did=banner_zee5</item>
+        <item>com.apple.atve.androidtv.appletv=banner_appletv</item>
+        <item>org.videolan.vlc=banner_vlc</item>
+        <item>com.mxtech.videoplayer.television=banner_mxplayer</item>
     </string-array>
 
     <!-- TVs with no TvInputManager have no HDMI list to read, but their own source-selection panel
