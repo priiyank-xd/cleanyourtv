@@ -41,7 +41,7 @@ com.android.healthconnect.controller
 com.android.health.connect.backuprestore
 
 # Google preloads
-com.google.android.videos
+# com.google.android.videos   # kept: Google TV app, may back universal search, watchlist and ratings
 # com.google.android.play.games
 
 # Demo and customization preloads
