@@ -2,6 +2,13 @@ plugins {
     id 'com.android.application'
 }
 
+// Fork: the TMDB read token comes from launcher/local.properties (gitignored) or the TMDB_READ_TOKEN
+// environment variable, never from a tracked file. Without one the online rows simply stay empty.
+def localProps = new Properties()
+def localFile = rootProject.file('local.properties')
+if (localFile.exists()) localFile.withInputStream { localProps.load(it) }
+def tmdbToken = localProps.getProperty('tmdb.read_token', System.getenv('TMDB_READ_TOKEN') ?: '')
+
 android {
     namespace 'com.gathin.tvhome'
     compileSdk 34
@@ -15,6 +22,11 @@ android {
         targetSdk 34
         versionCode 13
         versionName '3.4'
+        buildConfigField 'String', 'TMDB_TOKEN', "\"${tmdbToken}\""
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -47,4 +59,6 @@ dependencies {
     implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
     // Test only (never in the APK): plain JVM tests for the module card validators, src/test.
     testImplementation 'junit:junit:4.13.2'
+    // Test only: android.jar's org.json is a stub on the JVM; the TMDB parser tests need the real one.
+    testImplementation 'org.json:json:20231013'
 }

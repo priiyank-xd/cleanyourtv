@@ -58,7 +58,28 @@ final class LgHome {
     private FrameLayout root;
     private Bitmap wallpaper;
     private List<LgApps.App> apps = new ArrayList<>();
-    private final List<LgApps.App> slides = new ArrayList<>();
+    /** One page of the feature card: an app (last opened or a favourite) or a trending title. */
+    private static final class Slide {
+        final LgApps.App app;
+        final Tmdb.Title title;
+        final int rank;
+        final boolean cont;
+
+        Slide(LgApps.App app, Tmdb.Title title, int rank, boolean cont) {
+            this.app = app;
+            this.title = title;
+            this.rank = rank;
+            this.cont = cont;
+        }
+    }
+
+    private static final long NEW_MS = 5000;
+    private final List<Slide> slides = new ArrayList<>();
+    private final List<View> newViews = new ArrayList<>();
+    private final List<View> newDots = new ArrayList<>();
+    private final Map<String, Bitmap> art = new HashMap<>();
+    private TmdbFeed feed;
+    private int newIndex;
     private final List<View> slideViews = new ArrayList<>();
     private final List<View> slideDots = new ArrayList<>();
     private final List<LgApps.App> chips = new ArrayList<>();
@@ -75,6 +96,13 @@ final class LgHome {
         @Override public void run() {
             if (!focus.equals("feat") && slides.size() > 1) showSlide(slide + 1);
             handler.postDelayed(this, SLIDE_MS);
+        }
+    };
+
+    private final Runnable rotateNew = new Runnable() {
+        @Override public void run() {
+            if (!focus.equals("w1") && newViews.size() > 1) showNew(newIndex + 1);
+            handler.postDelayed(this, NEW_MS);
         }
     };
 
@@ -95,6 +123,7 @@ final class LgHome {
         root.setClipChildren(false);
         act.setContentView(root);
         wallpaper = loadWallpaper(cfg.wallpaper, w);
+        feed = new TmdbFeed(act, BuildConfig.TMDB_TOKEN);
         if (Build.VERSION.SDK_INT >= 31 && act.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             act.requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 41);
         }
@@ -106,12 +135,18 @@ final class LgHome {
         build();
         handler.removeCallbacks(advance);
         handler.postDelayed(advance, SLIDE_MS);
+        handler.removeCallbacks(rotateNew);
+        handler.postDelayed(rotateNew, NEW_MS);
         root.requestFocus();
+        List<String> pkgs = new ArrayList<>();
+        for (LgApps.App a : apps) pkgs.add(a.pkg);
+        feed.refreshIfStale(pkgs, () -> { if (resumed) build(); });
     }
 
     void onPause() {
         resumed = false;
         handler.removeCallbacks(advance);
+        handler.removeCallbacks(rotateNew);
     }
 
     void onNewIntent() {
@@ -122,6 +157,7 @@ final class LgHome {
 
     void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        feed.shutdown();
     }
 
     boolean dispatchKeyEvent(KeyEvent e) {
@@ -209,20 +245,25 @@ final class LgHome {
         slides.clear();
         slideViews.clear();
         slideDots.clear();
+        List<LgApps.App> picked = new ArrayList<>();
         List<LgApps.App> recent = LgApps.recent(apps, 1);
-        if (!recent.isEmpty()) slides.add(recent.get(0));
+        if (!recent.isEmpty()) picked.add(recent.get(0));
         for (String pkg : cfg.dockApps) {
-            if (slides.size() >= 4) break;
-            for (LgApps.App a : apps) if (a.pkg.equals(pkg) && !slides.contains(a)) slides.add(a);
+            if (picked.size() >= 3) break;
+            for (LgApps.App a : apps) if (a.pkg.equals(pkg) && !picked.contains(a)) picked.add(a);
         }
-        for (LgApps.App a : apps) if (slides.size() < 3 && !slides.contains(a)) slides.add(a);
+        for (LgApps.App a : apps) if (picked.size() < 3 && !picked.contains(a)) picked.add(a);
+        for (int i = 0; i < picked.size(); i++) slides.add(new Slide(picked.get(i), null, 0, i == 0 && !recent.isEmpty()));
+        List<Tmdb.Title> trend = feed.trending();
+        for (int i = 0; i < trend.size(); i++) slides.add(new Slide(null, trend.get(i), i + 1, false));
         feature = new FrameLayout(act);
         feature.setClipToOutline(true);
         feature.setBackground(round(0xFF15161D, 18));
         place(root, feature, 40, 76, 572, 236);
         register("feat", feature, 18);
         for (int i = 0; i < slides.size(); i++) {
-            View v = slideView(slides.get(i), i == 0 && !recent.isEmpty());
+            Slide sl = slides.get(i);
+            View v = sl.title != null ? titleSlideView(sl.title, sl.rank) : slideView(sl.app, sl.cont);
             v.setAlpha(i == slide ? 1f : 0f);
             feature.addView(v, new FrameLayout.LayoutParams(-1, -1));
             slideViews.add(v);
@@ -281,6 +322,75 @@ final class LgHome {
         bp.bottomMargin = px(20);
         s.addView(btn, bp);
         return s;
+    }
+
+    private View titleSlideView(Tmdb.Title t, int rank) {
+        FrameLayout s = new FrameLayout(act);
+        Bitmap b = artFor(t, px(572));
+        if (b != null) {
+            ImageView img = new ImageView(act);
+            img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            img.setImageBitmap(b);
+            s.addView(img, new FrameLayout.LayoutParams(-1, -1));
+        }
+        LgApps.App on = appForProvider(t.provider);
+        int color = on != null ? on.color : 0xFF888888;
+        View wash = new View(act);
+        wash.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xF20A080C, (color & 0x00FFFFFF) | 0x40000000, 0x000A080C}));
+        s.addView(wash, new FrameLayout.LayoutParams(-1, -1));
+        TextView kind = text(act.getString(R.string.lg_trending_rank, rank), 12, R.string.font_medium, 0xB3FFFFFF);
+        kind.setAllCaps(true);
+        kind.setLetterSpacing(0.16f);
+        place(s, kind, 30, 22, 400, -1);
+        if (on != null) {
+            ImageView logo = new ImageView(act);
+            logo.setImageDrawable(on.art);
+            logo.setScaleType(ImageView.ScaleType.FIT_START);
+            place(s, logo, 28, 48, 150, 42);
+        }
+        TextView title = text(t.name, 30, R.string.font_light, 0xFFFFFFFF);
+        place(s, title, 30, 104, 420, -1);
+        String sub = act.getString("movie".equals(t.kind) ? R.string.lg_movie : R.string.lg_series)
+                + (on != null ? " \u00b7 " + act.getString(R.string.lg_on_app, on.label) : "");
+        place(s, text(sub, 14, R.string.font_regular, 0xB8FFFFFF), 30, 146, 420, -1);
+        LinearLayout btn = new LinearLayout(act);
+        btn.setGravity(Gravity.CENTER_VERTICAL);
+        btn.setBackground(glass(20, false));
+        btn.setPadding(px(14), 0, px(18), 0);
+        ImageView icon = new ImageView(act);
+        icon.setImageResource(R.drawable.ic_lg_search);
+        btn.addView(icon, new LinearLayout.LayoutParams(px(18), px(18)));
+        TextView label = text(act.getString(R.string.lg_find_it), 14, R.string.font_medium, 0xFFFFFFFF);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.leftMargin = px(8);
+        btn.addView(label, lp);
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-2, px(40), Gravity.END | Gravity.BOTTOM);
+        bp.rightMargin = px(24);
+        bp.bottomMargin = px(20);
+        s.addView(btn, bp);
+        TextView credit = text(act.getString(R.string.lg_tmdb_credit), 10, R.string.font_regular, 0x80FFFFFF);
+        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.TOP);
+        cp.rightMargin = px(18);
+        cp.topMargin = px(18);
+        s.addView(credit, cp);
+        return s;
+    }
+
+    private LgApps.App appForProvider(int provider) {
+        String pkg = Tmdb.packageFor(provider);
+        if (pkg != null) for (LgApps.App a : apps) if (a.pkg.equals(pkg)) return a;
+        return null;
+    }
+
+    /** A title's backdrop, decoded once and kept for the life of Home. */
+    private Bitmap artFor(Tmdb.Title t, int width) {
+        Bitmap b = art.get(t.backdrop);
+        if (b == null) {
+            b = feed.image(t, width);
+            if (b != null) art.put(t.backdrop, b);
+        }
+        return b;
     }
 
     private void showSlide(int i) {
@@ -356,7 +466,13 @@ final class LgHome {
     }
 
     private void squareWidget() {
-        // Milestone 2 fills this from TMDB ("New this week"); until then it says what is coming.
+        newViews.clear();
+        newDots.clear();
+        List<Tmdb.Title> list = feed.newThisWeek();
+        if (!list.isEmpty()) {
+            newWidget(list);
+            return;
+        }
         FrameLayout card = new FrameLayout(act);
         card.setClipToOutline(true);
         card.setBackground(glass(18, false));
@@ -364,12 +480,86 @@ final class LgHome {
         kick.setAllCaps(true);
         kick.setLetterSpacing(0.14f);
         place(card, kick, 16, 14, 220, -1);
-        TextView body = text(act.getString(R.string.lg_new_this_week_soon), 17, R.string.font_light, 0xE6FFFFFF);
+        TextView body = text(act.getString(feed.enabled() ? R.string.lg_new_this_week_loading : R.string.lg_new_this_week_no_key),
+                17, R.string.font_light, 0xE6FFFFFF);
         body.setSingleLine(false);
         body.setMaxLines(3);
         place(card, body, 16, 120, 218, -1);
         place(root, card, 40, 330, 250, 196);
         register("w1", card, 18);
+    }
+
+    private void newWidget(List<Tmdb.Title> list) {
+        FrameLayout card = new FrameLayout(act);
+        card.setClipToOutline(true);
+        card.setBackground(round(0xFF101218, 18));
+        place(root, card, 40, 330, 250, 196);
+        register("w1", card, 18);
+        if (newIndex >= list.size()) newIndex = 0;
+        for (int i = 0; i < list.size(); i++) {
+            Tmdb.Title t = list.get(i);
+            FrameLayout s = new FrameLayout(act);
+            Bitmap b = artFor(t, px(250));
+            if (b != null) {
+                ImageView img = new ImageView(act);
+                img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                img.setImageBitmap(b);
+                s.addView(img, new FrameLayout.LayoutParams(-1, -1));
+            }
+            View fade = new View(act);
+            fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x59000000, 0x00000000, 0xCC000000}));
+            s.addView(fade, new FrameLayout.LayoutParams(-1, -1));
+            TextView kick = text(act.getString(R.string.lg_new_this_week), 11, R.string.font_medium, 0xCCFFFFFF);
+            kick.setAllCaps(true);
+            kick.setLetterSpacing(0.14f);
+            place(s, kick, 16, 14, 150, -1);
+            LgApps.App on = appForProvider(t.provider);
+            if (on != null) {
+                ImageView logo = new ImageView(act);
+                logo.setImageDrawable(on.art);
+                logo.setScaleType(ImageView.ScaleType.FIT_END);
+                place(s, logo, 176, 6, 62, 35);
+            }
+            TextView title = text(t.name, 19, R.string.font_medium, 0xFFFFFFFF);
+            title.setGravity(Gravity.END);
+            place(s, title, 16, 140, 218, -1);
+            TextView sub = text(act.getString("movie".equals(t.kind) ? R.string.lg_movie : R.string.lg_series), 12, R.string.font_regular, 0xB3FFFFFF);
+            sub.setGravity(Gravity.END);
+            place(s, sub, 16, 166, 218, -1);
+            s.setAlpha(i == newIndex ? 1f : 0f);
+            card.addView(s, new FrameLayout.LayoutParams(-1, -1));
+            newViews.add(s);
+        }
+        LinearLayout dots = new LinearLayout(act);
+        dots.setGravity(Gravity.CENTER_VERTICAL);
+        for (int i = 0; list.size() > 1 && i < list.size(); i++) {
+            View d = new View(act);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(5), px(5));
+            lp.rightMargin = px(5);
+            dots.addView(d, lp);
+            newDots.add(d);
+        }
+        place(card, dots, 16, 178, -1, 5);
+        paintNewDots();
+    }
+
+    private void showNew(int i) {
+        if (newViews.isEmpty()) return;
+        int next = ((i % newViews.size()) + newViews.size()) % newViews.size();
+        newViews.get(newIndex).animate().alpha(0f).setDuration(600).start();
+        newViews.get(next).animate().alpha(1f).setDuration(600).start();
+        newIndex = next;
+        paintNewDots();
+    }
+
+    private void paintNewDots() {
+        for (int i = 0; i < newDots.size(); i++) {
+            View d = newDots.get(i);
+            d.setBackground(round(i == newIndex ? 0xFFFFFFFF : 0x59FFFFFF, 3));
+            ViewGroup.LayoutParams lp = d.getLayoutParams();
+            lp.width = px(i == newIndex ? 16 : 5);
+            d.setLayoutParams(lp);
+        }
     }
 
     private void appBand() {
@@ -503,11 +693,20 @@ final class LgHome {
     // ---- actions ----
 
     private void activate() {
-        if (focus.equals("feat")) { if (!slides.isEmpty()) LgApps.launch(act, slides.get(slide)); return; }
-        if (focus.equals("top0")) { search(); return; }
+        if (focus.equals("feat")) {
+            if (slides.isEmpty()) return;
+            Slide sl = slides.get(slide);
+            if (sl.title != null) search(sl.title.name); else LgApps.launch(act, sl.app);
+            return;
+        }
+        if (focus.equals("top0")) { search(null); return; }
         if (focus.equals("top1")) { start(SystemSettings.intent(act, Settings.ACTION_SETTINGS)); return; }
         if (focus.equals("clock")) { start(new Intent(act, ClockActivity.class)); return; }
-        if (focus.equals("w1")) return;
+        if (focus.equals("w1")) {
+            List<Tmdb.Title> list = feed.newThisWeek();
+            if (!list.isEmpty()) search(list.get(Math.min(newIndex, list.size() - 1)).name);
+            return;
+        }
         int n = LgNav.parse(focus);
         if (focus.startsWith("a") && n < apps.size()) { LgApps.launch(act, apps.get(n)); return; }
         if (focus.startsWith("c") && n < chips.size()) { LgApps.launch(act, chips.get(n)); return; }
@@ -519,9 +718,11 @@ final class LgHome {
         }
     }
 
-    /** Google TV search (Gemini on newer firmware); milestone 2 passes a title as the query. */
-    private void search() {
-        if (!start(new Intent(SearchManager.INTENT_ACTION_GLOBAL_SEARCH))) start(new Intent(Intent.ACTION_ASSIST));
+    /** Google TV search (Gemini on newer firmware), for a title when one is given: where to watch, ratings, watchlist. */
+    private void search(String query) {
+        Intent i = new Intent(SearchManager.INTENT_ACTION_GLOBAL_SEARCH);
+        if (query != null) i.putExtra(SearchManager.QUERY, query);
+        if (!start(i)) start(new Intent(Intent.ACTION_ASSIST));
     }
 
     private boolean start(Intent i) {

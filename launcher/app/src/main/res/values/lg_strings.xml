@@ -16,5 +16,12 @@
     <string name="lg_art_mode" translatable="false">Art mode</string>
     <string name="lg_ok_to_start" translatable="false">OK to start</string>
     <string name="lg_new_this_week" translatable="false">New this week</string>
-    <string name="lg_new_this_week_soon" translatable="false">Fills in from TMDB in the next update</string>
+    <string name="lg_new_this_week_loading" translatable="false">Loading new titles on your apps</string>
+    <string name="lg_new_this_week_no_key" translatable="false">Add a TMDB key to see new titles</string>
+    <string name="lg_trending_rank" translatable="false">Trending now \u00b7 #%1$d</string>
+    <string name="lg_movie" translatable="false">Movie</string>
+    <string name="lg_series" translatable="false">Series</string>
+    <string name="lg_on_app" translatable="false">on %1$s</string>
+    <string name="lg_find_it" translatable="false">Find it</string>
+    <string name="lg_tmdb_credit" translatable="false">Data: TMDB</string>
 </resources>
