@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the LG-style home (fork only, English). -->
+<resources>
+    <string name="lg_continue" translatable="false">Continue</string>
+    <string name="lg_favourite" translatable="false">Favourite</string>
+    <string name="lg_continue_title" translatable="false">Pick up where you left off</string>
+    <string name="lg_favourite_title" translatable="false">Your favourite, one press away</string>
+    <string name="lg_last_opened" translatable="false">Last opened %1$s</string>
+    <string name="lg_continue_button" translatable="false">Continue</string>
+    <string name="lg_open_app" translatable="false">Open %1$s</string>
+    <string name="lg_quick_settings" translatable="false">Quick settings</string>
+    <string name="lg_wifi" translatable="false">Wi-Fi</string>
+    <string name="lg_bluetooth" translatable="false">Bluetooth</string>
+    <string name="lg_mirror" translatable="false">Mirror</string>
+    <string name="lg_input" translatable="false">Input</string>
+    <string name="lg_art_mode" translatable="false">Art mode</string>
+    <string name="lg_ok_to_start" translatable="false">OK to start</string>
+    <string name="lg_new_this_week" translatable="false">New this week</string>
+    <string name="lg_new_this_week_soon" translatable="false">Fills in from TMDB in the next update</string>
+</resources>

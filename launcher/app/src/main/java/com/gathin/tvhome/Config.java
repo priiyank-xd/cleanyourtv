@@ -434,6 +434,20 @@ final class Config {
         return GLASS_HALO.equalsIgnoreCase(v) ? GLASS_HALO : GLASS_DEFAULT;
     }
 
+    /** home_layout "lg": the LG-style home (LgHome) instead of the classic dock and grid. */
+    static final String HOME_LG = "lg";
+
+    /** config.xml home_layout, overlaid by a theme's config.json; "lg" or "classic" (anything else). */
+    static String homeLayout(Context ctx) {
+        String value = ctx.getString(R.string.home_layout).trim();
+        File dir = dir(ctx);
+        File file = dir != null ? new File(dir, FILE_NAME) : null;
+        boolean mounted = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
+        JSONObject json = readOverlay(ctx, file, mounted);
+        if (json != null) value = string(json, "home_layout", value);
+        return HOME_LG.equalsIgnoreCase(value) ? HOME_LG : "classic";
+    }
+
     /** The folder the theme tools push into; null when external storage is unavailable. */
     static File dir(Context ctx) {
         return ctx.getExternalFilesDir(null);

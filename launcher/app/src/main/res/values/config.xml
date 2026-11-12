@@ -91,6 +91,9 @@
     </string-array>
     <!-- A tile's artwork instead of the app's banner: "package=drawable", a banner_* drawable bundled with the
          launcher (res/drawable). banner_tv is a magenta field with the Live TV glyph. -->
+    <!-- Home layout: "lg" is the LG-style home (feature card, quick settings, art clock, widgets, app band);
+         "classic" is the original dock and grid. A theme's config.json can switch it with "home_layout". -->
+    <string name="home_layout" translatable="false">lg</string>
     <string-array name="app_banners">
         <!-- Bare logos on a transparent background, bundled in res/drawable-nodpi. -->
         <item>com.netflix.ninja=banner_netflix</item>
