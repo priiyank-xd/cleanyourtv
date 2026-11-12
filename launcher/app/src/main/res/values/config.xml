@@ -105,6 +105,11 @@
         <item>com.apple.atve.androidtv.appletv=banner_appletv</item>
         <item>org.videolan.vlc=banner_vlc</item>
         <item>com.mxtech.videoplayer.television=banner_mxplayer</item>
+        <item>com.hulu.livingroomplus=banner_hulu</item>
+        <item>com.plexapp.android=banner_plex</item>
+        <item>com.discoveryplus.tv.android=banner_discoveryplus</item>
+        <item>com.discovery.discoveryplus.androidtv=banner_discoveryplus</item>
+        <!-- TLDR (Lumio's built-in app): add "<package>=banner_tldr" once its package name is read from the projector. -->
     </string-array>
 
     <!-- TVs with no TvInputManager have no HDMI list to read, but their own source-selection panel
