@@ -34,6 +34,8 @@ final class TmdbFeed {
     }
 
     static final long MAX_AGE_MS = 6 * 60 * 60 * 1000L;
+    /** After a failed refresh, wait this long before trying again (Home resumes often). */
+    static final long RETRY_MS = 15 * 60 * 1000L;
     static final int MAX_NEW = 8, MAX_TRENDING = 3, TRENDING_CHECKS = 20;
     private static final String TAG = "TmdbFeed", FILE = "tmdb_feed.json", SIZE = "w780";
 
@@ -41,10 +43,12 @@ final class TmdbFeed {
     private final String token;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
-    private List<Tmdb.Title> fresh = new ArrayList<>();
-    private List<Tmdb.Title> trending = new ArrayList<>();
-    private long fetchedAt;
-    private String providersKey = "";
+    private volatile List<Tmdb.Title> fresh = new ArrayList<>();
+    private volatile List<Tmdb.Title> trending = new ArrayList<>();
+    private volatile long fetchedAt;
+    private volatile String providersKey = "";
+    /** When the last refresh started; main thread only. */
+    private long attemptAt;
     private boolean busy;
 
     TmdbFeed(Context ctx, String token) {
@@ -69,9 +73,13 @@ final class TmdbFeed {
     void refreshIfStale(Collection<String> installedPackages, Listener listener) {
         Set<Integer> mine = Tmdb.providerIds(installedPackages);
         String key = mine.toString();
-        boolean stale = System.currentTimeMillis() - fetchedAt > MAX_AGE_MS || !key.equals(providersKey);
-        if (!enabled() || mine.isEmpty() || !stale || busy) return;
+        long now = System.currentTimeMillis();
+        boolean appsChanged = !key.equals(providersKey);
+        boolean stale = now - fetchedAt > MAX_AGE_MS || appsChanged;
+        boolean waiting = !appsChanged && now - attemptAt < RETRY_MS;
+        if (!enabled() || mine.isEmpty() || !stale || waiting || busy) return;
         busy = true;
+        attemptAt = now;
         worker.execute(() -> {
             try {
                 fetch(mine, key);
@@ -84,8 +92,21 @@ final class TmdbFeed {
         });
     }
 
+    interface Decoded {
+        void onBitmap(Bitmap bitmap);
+    }
+
+    /** Decodes a title's cached backdrop on the worker thread; {@code done} runs on the main thread (null if none). */
+    void decode(Tmdb.Title t, int width, Decoded done) {
+        if (worker.isShutdown()) return;
+        worker.execute(() -> {
+            Bitmap b = image(t, width);
+            main.post(() -> done.onBitmap(b));
+        });
+    }
+
     /** The cached backdrop for a title, decoded no wider than {@code width} pixels, or null when not yet on disk. */
-    Bitmap image(Tmdb.Title t, int width) {
+    private Bitmap image(Tmdb.Title t, int width) {
         File f = imageFile(t.backdrop);
         if (!f.isFile()) return null;
         BitmapFactory.Options o = new BitmapFactory.Options();
@@ -122,6 +143,11 @@ final class TmdbFeed {
             t.provider = provider(t, mine);
             if (t.provider != 0) trendList.add(t);
         }
+        // Lookups that failed count as "not on your apps"; an empty answer is more likely a network blip than
+        // a week with nothing new, so keep the previous list rather than blank the widget for six hours.
+        if (newList.isEmpty() && trendList.isEmpty()) throw new java.io.IOException("TMDB returned no titles on your apps");
+        if (newList.isEmpty()) newList = fresh;
+        if (trendList.isEmpty()) trendList = trending;
         for (Tmdb.Title t : newList) cacheImage(t.backdrop);
         for (Tmdb.Title t : trendList) cacheImage(t.backdrop);
         fresh = newList;

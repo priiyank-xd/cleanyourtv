@@ -1,14 +1,14 @@
 # Lumio Arc 5 Projector (Google TV on MediaTek board)
 
-Notes and debloat list for the **Lumio Arc 5 Projector** (SDMC himalaya, MediaTek MT9630), running Google TV on Android 14 (firmware build `UKNV.260904.001`). Tested on the real device; all 16 disabled packages survived a cold reboot with zero drift.
+Notes and debloat list for the **Lumio Arc 5 Projector** (SDMC himalaya, MediaTek MT9630), running Google TV on Android 14 (firmware build `UKNV.260904.001`). Tested on the real device; all 16 originally disabled packages survived a cold reboot with zero drift. The Google TV app (`com.google.android.videos`) is now kept enabled so universal search, ratings and the watchlist keep working.
 
-The [debloat list](debloat.txt) disables 16 packages: Google feedback and telemetry, background backup services, ad attribution, and unused preloads.
+The [debloat list](debloat.txt) disables 15 packages: Google feedback and telemetry, background backup services, ad attribution, and unused preloads.
 
 ## Files in this folder
 
 | File | What it is |
 |---|---|
-| `debloat.txt` | The 16 packages that were disabled, grouped and commented |
+| `debloat.txt` | The 15 packages to disable, grouped and commented |
 | `tv.json` | Model metadata for the TV list tables |
 | `README.md` | This page |
 

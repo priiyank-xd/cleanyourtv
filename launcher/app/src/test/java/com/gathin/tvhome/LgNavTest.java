@@ -9,7 +9,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class LgNavTest {
-    private static final int APPS = 15, CHIPS = 4, QUICK = 4;
+    private static final int APPS = 15, CHIPS = 4, QUICK = 5;
 
     private static String go(String from, char dir) {
         return LgNav.next(from, dir, APPS, CHIPS, QUICK, 0);
@@ -24,7 +24,8 @@ public class LgNavTest {
 
     @Test public void quickSettingsSitAboveTheArtClock() {
         assertEquals("q1", go("q0", LgNav.RIGHT));
-        assertEquals("q3", go("q3", LgNav.RIGHT));
+        assertEquals("q4", go("q3", LgNav.RIGHT));
+        assertEquals("q4", go("q4", LgNav.RIGHT));
         assertEquals("feat", go("q0", LgNav.LEFT));
         assertEquals("clock", go("q2", LgNav.DOWN));
         assertEquals("top1", go("q2", LgNav.UP));
@@ -54,7 +55,7 @@ public class LgNavTest {
     @Test public void topButtons() {
         assertEquals("top1", go("top0", LgNav.RIGHT));
         assertEquals("feat", go("top0", LgNav.DOWN));
-        assertEquals("q3", go("top1", LgNav.DOWN));
+        assertEquals("q4", go("top1", LgNav.DOWN));
     }
 
     @Test public void noAppsNeverStrandsFocus() {

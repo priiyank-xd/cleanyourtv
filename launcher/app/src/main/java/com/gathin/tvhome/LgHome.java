@@ -5,6 +5,11 @@ import android.app.SearchManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.content.pm.ResolveInfo;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -47,7 +52,7 @@ final class LgHome {
     // geometry from the locked concept, in 960x540 design units
     private static final float BAND_X = 306, BAND_Y = 330, BAND_W = 700, BAND_H = 108;
     private static final float SZ = 70, STEP = 90;
-    private static final int VISIBLE = 7, QUICK = 4, MAX_CHIPS = 4;
+    private static final int VISIBLE = 7, QUICK = 5, MAX_CHIPS = 4;
     private static final long SLIDE_MS = 6000;
     private static final int GLASS_TOP = 0x24FFFFFF, GLASS_BOTTOM = 0x0DFFFFFF, GLASS_EDGE = 0x33FFFFFF;
 
@@ -91,6 +96,15 @@ final class LgHome {
     private String focus = "a0";
     private int slide, first;
     private boolean resumed, okDown;
+    /** Reload the app list on the next build: set at start and whenever an app is installed, removed or updated. */
+    private boolean appsDirty = true;
+    private final java.util.Set<String> decoding = new java.util.HashSet<>();
+    private final BroadcastReceiver packageWatch = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            appsDirty = true;
+            if (resumed) build();
+        }
+    };
 
     private final Runnable advance = new Runnable() {
         @Override public void run() {
@@ -124,10 +138,17 @@ final class LgHome {
         act.setContentView(root);
         wallpaper = loadWallpaper(cfg.wallpaper, w);
         feed = new TmdbFeed(act, BuildConfig.TMDB_TOKEN);
+        IntentFilter packages = new IntentFilter();
+        packages.addAction(Intent.ACTION_PACKAGE_ADDED);
+        packages.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        packages.addAction(Intent.ACTION_PACKAGE_CHANGED);
+        packages.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        packages.addDataScheme("package");
+        act.registerReceiver(packageWatch, packages);
         if (Build.VERSION.SDK_INT >= 31 && act.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             act.requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, 41);
         }
-        build();
+        // The first build happens in onResume, which always follows.
     }
 
     void onResume() {
@@ -157,6 +178,10 @@ final class LgHome {
 
     void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        try {
+            act.unregisterReceiver(packageWatch);
+        } catch (IllegalArgumentException ignored) {
+        }
         feed.shutdown();
     }
 
@@ -168,9 +193,9 @@ final class LgHome {
         if (dir == 0 && !ok) return false;
         if (ok) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) okDown = true;
-            else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && okDown) {
+            else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && okDown && focus.equals("top1")) {
                 okDown = false;
-                if (focus.equals("top1")) start(new Intent(act, LauncherSettingsActivity.class));
+                start(new Intent(act, LauncherSettingsActivity.class));
             } else if (e.getAction() == KeyEvent.ACTION_UP && okDown) {
                 okDown = false;
                 activate();
@@ -187,7 +212,15 @@ final class LgHome {
     // ---- building ----
 
     private void build() {
-        apps = LgApps.load(act, cfg);
+        if (appsDirty) {
+            apps = LgApps.load(act, cfg);
+            appsDirty = false;
+        } else {
+            for (LgApps.App a : apps) a.lastOpened = LastOpened.get(act, a.pkg);
+        }
+        // 8. keep the band's scroll inside the list, which may have shrunk
+        first = Math.max(0, Math.min(first, apps.size() - VISIBLE));
+        pruneArt();
         focusables.clear();
         radii.clear();
         root.removeAllViews();
@@ -263,6 +296,7 @@ final class LgHome {
         for (int i = 0; i < picked.size(); i++) slides.add(new Slide(picked.get(i), null, 0, i == 0 && !recent.isEmpty()));
         List<Tmdb.Title> trend = feed.trending();
         for (int i = 0; i < trend.size(); i++) slides.add(new Slide(null, trend.get(i), i + 1, false));
+        if (slide >= slides.size()) slide = 0;
         feature = new FrameLayout(act);
         feature.setClipToOutline(true);
         feature.setBackground(round(0xFF15161D, 18));
@@ -285,7 +319,6 @@ final class LgHome {
             slideDots.add(d);
         }
         place(feature, dots, 30, 214, -1, 6);
-        if (slide >= slides.size()) slide = 0;
         paintDots();
     }
 
@@ -390,14 +423,30 @@ final class LgHome {
         return null;
     }
 
-    /** A title's backdrop, decoded once and kept for the life of Home. */
+    /**
+     * A title's backdrop if it is decoded already; otherwise null now, and a decode on the feed's worker thread
+     * that redraws Home when it lands. Decoded once at the feature card's width and shared with the square widget.
+     */
     private Bitmap artFor(Tmdb.Title t, int width) {
         Bitmap b = art.get(t.backdrop);
-        if (b == null) {
-            b = feed.image(t, width);
-            if (b != null) art.put(t.backdrop, b);
+        if (b == null && decoding.add(t.backdrop)) {
+            String key = t.backdrop;
+            feed.decode(t, px(572), bitmap -> {
+                decoding.remove(key);
+                if (bitmap == null) return;
+                art.put(key, bitmap);
+                if (resumed) build();
+            });
         }
         return b;
+    }
+
+    /** Drops backdrops of titles that are no longer in either list. */
+    private void pruneArt() {
+        java.util.Set<String> keep = new java.util.HashSet<>();
+        for (Tmdb.Title t : feed.newThisWeek()) keep.add(t.backdrop);
+        for (Tmdb.Title t : feed.trending()) keep.add(t.backdrop);
+        art.keySet().retainAll(keep);
     }
 
     private void showSlide(int i) {
@@ -428,10 +477,10 @@ final class LgHome {
         title.setAllCaps(true);
         title.setLetterSpacing(0.14f);
         place(card, title, 16, 12, -1, -1);
-        int[] icons = {R.drawable.ic_wifi, R.drawable.ic_lg_bluetooth, R.drawable.ic_lg_cast, R.drawable.ic_input};
-        int[] labels = {R.string.lg_wifi, R.string.lg_bluetooth, R.string.lg_mirror, R.string.lg_input};
-        boolean[] on = {networkUp(), bluetoothOn(), false, false};
-        float gap = (296 - 28 - 4 * 48) / 3f;
+        int[] icons = {R.drawable.ic_wifi, R.drawable.ic_lg_bluetooth, R.drawable.ic_lg_cast, R.drawable.ic_input, R.drawable.ic_lg_patterns};
+        int[] labels = {R.string.lg_wifi, R.string.lg_bluetooth, R.string.lg_mirror, R.string.lg_input, R.string.lg_patterns};
+        boolean[] on = {networkUp(), bluetoothOn(), false, false, false};
+        float gap = (296 - 28 - QUICK * 48) / (float) (QUICK - 1);
         for (int i = 0; i < QUICK; i++) {
             float x = 14 + i * (48 + gap);
             FrameLayout b = new FrameLayout(act);
@@ -722,8 +771,23 @@ final class LgHome {
             if (n == 0) start(SystemSettings.intent(act, Settings.ACTION_WIFI_SETTINGS));
             else if (n == 1) start(SystemSettings.intent(act, Settings.ACTION_BLUETOOTH_SETTINGS));
             else if (n == 2) start(SystemSettings.intent(act, Settings.ACTION_CAST_SETTINGS));
-            else start(new Intent(MainActivity.ACTION_VIEW_INPUTS));
+            else if (n == 3) openInputs();
+            else start(new Intent(act, CalibrationActivity.class));
         }
+    }
+
+    /**
+     * The TV's input switcher. With handle_view_inputs on, this launcher also answers VIEW_INPUTS (and forwards it
+     * back to Home), so pick another app's handler; Settings if the TV has none.
+     */
+    void openInputs() {
+        Intent view = new Intent(MainActivity.ACTION_VIEW_INPUTS);
+        for (ResolveInfo ri : act.getPackageManager().queryIntentActivities(view, 0)) {
+            if (ri.activityInfo.packageName.equals(act.getPackageName())) continue;
+            start(new Intent(view).setComponent(new ComponentName(ri.activityInfo.packageName, ri.activityInfo.name)));
+            return;
+        }
+        start(SystemSettings.intent(act, Settings.ACTION_SETTINGS));
     }
 
     /** Google TV search (Gemini on newer firmware), for a title when one is given: where to watch, ratings, watchlist. */

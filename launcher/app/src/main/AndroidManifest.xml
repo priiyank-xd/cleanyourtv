@@ -189,6 +189,13 @@
             android:noHistory="true"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
 
+        <!-- Fork: calibration screens for the projector, opened from the LG-style home's quick settings. -->
+        <activity
+            android:name=".CalibrationActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+
         <!-- stock_home_redirect at boot: HomeKeyService opens this invisible activity once, so the screen behind
              it sends a window event when it closes (HomeKeyService.probeAtBoot). -->
         <activity

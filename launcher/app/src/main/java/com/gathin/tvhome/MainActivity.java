@@ -464,6 +464,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (Config.HOME_LG.equals(Config.homeLayout(this))) {
             lgHome = new LgHome(this);
             lgHome.onCreate();
+            lgIntent(getIntent());
             return;
         }
         setContentView(R.layout.activity_main);
@@ -1047,6 +1048,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         return true;
     }
 
+    /**
+     * The LG-style home's answer to the intents the classic home handles in onNewIntent: launcher settings opens
+     * as usual, the input switcher opens the TV's own, and the app library (not part of this layout) is ignored.
+     */
+    private boolean lgIntent(Intent intent) {
+        if (openLauncherSettingsIfAsked(intent)) return true;
+        String action = intent == null ? null : intent.getAction();
+        if (ACTION_VIEW_INPUTS.equals(action)) {
+            setIntent(new Intent(Intent.ACTION_MAIN));
+            lgHome.openInputs();
+            return true;
+        }
+        if (ACTION_APP_LIBRARY.equals(action)) {
+            setIntent(new Intent(Intent.ACTION_MAIN));
+            return true;
+        }
+        return false;
+    }
+
     private boolean openLauncherSettingsIfAsked(Intent intent) {
         if (intent == null || !ACTION_LAUNCHER_SETTINGS.equals(intent.getAction())) return false;
         setIntent(new Intent(Intent.ACTION_MAIN));
@@ -1062,7 +1082,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        if (lgHome != null) { setIntent(intent); lgHome.onNewIntent(); return; }
+        if (lgHome != null) {
+            setIntent(intent);
+            if (!lgIntent(intent)) lgHome.onNewIntent();
+            return;
+        }
         if (openLauncherSettingsIfAsked(intent)) return;
         if (openLibraryIfAsked(intent)) return;
         if (openInputsIfAsked(intent)) return;

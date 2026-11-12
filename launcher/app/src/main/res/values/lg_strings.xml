@@ -13,6 +13,7 @@
     <string name="lg_bluetooth" translatable="false">Bluetooth</string>
     <string name="lg_mirror" translatable="false">Mirror</string>
     <string name="lg_input" translatable="false">Input</string>
+    <string name="lg_patterns" translatable="false">Patterns</string>
     <string name="lg_art_mode" translatable="false">Art mode</string>
     <string name="lg_ok_to_start" translatable="false">OK to start</string>
     <string name="lg_new_this_week" translatable="false">New this week</string>
