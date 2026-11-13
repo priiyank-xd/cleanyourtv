@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fork: a deep night-blue wash behind Launcher settings, so its glass rows read like Home's. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:type="radial" android:centerX="0.75" android:centerY="0.15" android:gradientRadius="1400"
+        android:startColor="#FF2A3A55" android:centerColor="#FF141B29" android:endColor="#FF07090E" />
+</shape>

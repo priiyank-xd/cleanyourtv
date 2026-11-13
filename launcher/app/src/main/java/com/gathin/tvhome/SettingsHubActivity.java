@@ -33,7 +33,9 @@ import java.util.function.IntSupplier;
  */
 public class SettingsHubActivity extends Activity {
     private static final int ROW_TEXT = 0xFFFFFFFF, ROW_SUB = 0x8CFFFFFF, FOCUS_BG = 0xF2FFFFFF, FOCUS_TEXT = 0xFF111111,
-            FOCUS_SUB = 0x8C000000, SEG_BG = 0x14FFFFFF, SEG_ON_BG = 0x4D6EC1FF, SEG_ON_FOCUS = 0xFF1A5FA8;
+            FOCUS_SUB = 0x8C000000;
+    /** Liquid glass, as on Home: a light top-to-bottom gradient with a thin bright edge. */
+    private static final int GLASS_TOP = 0x33FFFFFF, GLASS_BOTTOM = 0x0FFFFFFF, GLASS_EDGE = 0x3DFFFFFF;
     private static final String[] CLOCK_FORMATS = {"system", "12", "24"};
 
     private float u;
@@ -48,20 +50,24 @@ public class SettingsHubActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         View dim = new View(this);
-        dim.setBackgroundColor(0x73000000);
+        dim.setBackgroundColor(0x40000000);
         root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout pane = new LinearLayout(this);
         pane.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable paneBg = new GradientDrawable();
-        paneBg.setColor(0xF0161A20);
-        pane.setBackground(paneBg);
-        root.addView(pane, new FrameLayout.LayoutParams(px(380), -1, Gravity.END));
-        View edge = new View(this);
-        edge.setBackgroundColor(0x24FFFFFF);
-        FrameLayout.LayoutParams edgeLp = new FrameLayout.LayoutParams(Math.max(1, px(1)), -1, Gravity.END);
-        edgeLp.rightMargin = px(380);
-        root.addView(edge, edgeLp);
+        // A floating glass panel: a dark tint so text stays readable over bright movie art, the glass on top.
+        GradientDrawable tint = new GradientDrawable();
+        tint.setColor(0x8C10141E);
+        tint.setCornerRadius(px(26));
+        GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0x2EFFFFFF, 0x0FFFFFFF, 0x08FFFFFF});
+        sheen.setCornerRadius(px(26));
+        sheen.setStroke(Math.max(1, px(1)), GLASS_EDGE);
+        pane.setBackground(new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{tint, sheen}));
+        pane.setClipToOutline(true);
+        FrameLayout.LayoutParams paneLp = new FrameLayout.LayoutParams(px(372), -1, Gravity.END);
+        paneLp.setMargins(0, px(16), px(16), px(16));
+        root.addView(pane, paneLp);
 
         TextView title = text(getString(R.string.hub_title), 22, R.string.font_medium, ROW_TEXT);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
@@ -155,14 +161,20 @@ public class SettingsHubActivity extends Activity {
             view.setBackground(f ? round(FOCUS_BG, 12) : null);
             title.setTextColor(f ? FOCUS_TEXT : ROW_TEXT);
             icon.setColorFilter(f ? FOCUS_TEXT : ROW_TEXT);
-            iconBg.setColor(f ? 0x14000000 : 0x1AFFFFFF);
+            if (f) {
+                iconBg.setColors(new int[]{0x14000000, 0x14000000});
+                iconBg.setStroke(0, 0);
+            } else {
+                iconBg.setColors(new int[]{GLASS_TOP, GLASS_BOTTOM});
+                iconBg.setStroke(Math.max(1, px(1)), GLASS_EDGE);
+            }
             if (sub != null) sub.setTextColor(f ? FOCUS_SUB : ROW_SUB);
             if (seg != null) {
                 int on = current;
                 for (int i = 0; i < seg.length; i++) {
                     boolean sel = i == on;
-                    seg[i].setBackground(round(sel ? (f ? SEG_ON_FOCUS : SEG_ON_BG) : (f ? 0x12000000 : SEG_BG), 10));
-                    seg[i].setTextColor(sel ? 0xFFFFFFFF : f ? 0x99000000 : 0xB3FFFFFF);
+                    seg[i].setBackground(sel ? round(f ? 0xFF111111 : 0xE6FFFFFF, 10) : f ? round(0x12000000, 10) : glass(10));
+                    seg[i].setTextColor(sel ? (f ? 0xFFFFFFFF : 0xFF111111) : f ? 0x99000000 : 0xCCFFFFFF);
                 }
             }
         }
@@ -186,7 +198,7 @@ public class SettingsHubActivity extends Activity {
         r.view.setMinimumHeight(px(48));
         r.view.setPadding(px(12), px(8), px(12), px(8));
         FrameLayout iconBox = new FrameLayout(this);
-        r.iconBg = new GradientDrawable();
+        r.iconBg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{GLASS_TOP, GLASS_BOTTOM});
         r.iconBg.setShape(GradientDrawable.OVAL);
         iconBox.setBackground(r.iconBg);
         r.icon = new ImageView(this);
@@ -308,6 +320,13 @@ public class SettingsHubActivity extends Activity {
         t.setSingleLine(true);
         t.setEllipsize(TextUtils.TruncateAt.END);
         return t;
+    }
+
+    private GradientDrawable glass(float radius) {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{GLASS_TOP, GLASS_BOTTOM});
+        g.setCornerRadius(px(radius));
+        g.setStroke(Math.max(1, px(1)), GLASS_EDGE);
+        return g;
     }
 
     private GradientDrawable round(int color, float radius) {
