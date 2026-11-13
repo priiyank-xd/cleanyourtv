@@ -55,6 +55,8 @@ final class LgHome {
     private static final int VISIBLE = 7, QUICK = 5, MAX_CHIPS = 4;
     private static final long SLIDE_MS = 6000;
     private static final int GLASS_TOP = 0x24FFFFFF, GLASS_BOTTOM = 0x0DFFFFFF, GLASS_EDGE = 0x33FFFFFF;
+    /** Focused glass: brighter, with a bright edge. */
+    private static final int FOCUS_GLASS_TOP = 0x75FFFFFF, FOCUS_GLASS_BOTTOM = 0x2EFFFFFF, FOCUS_GLASS_EDGE = 0xD9FFFFFF;
 
     private final MainActivity act;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -726,11 +728,7 @@ final class LgHome {
         for (int i = 0; i < apps.size(); i++) {
             LgApps.App a = apps.get(i);
             FrameLayout c = new FrameLayout(act);
-            GradientDrawable circle = new GradientDrawable();
-            circle.setShape(GradientDrawable.OVAL);
-            circle.setColor(0x1AFFFFFF);
-            circle.setStroke(Math.max(1, px(1)), 0x29FFFFFF);
-            c.setBackground(circle);
+            c.setBackground(appCircle(false));
             ImageView logo = new ImageView(act);
             logo.setImageDrawable(a.art);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -800,6 +798,7 @@ final class LgHome {
         Float r = radii.get(key);
         if (!on) {
             v.setForeground(null);
+            if (key.startsWith("a")) v.setBackground(appCircle(false));
             if (key.startsWith("q")) {
                 int i = LgNav.parse(key);
                 boolean active = i == 0 ? networkUp() : i == 1 && bluetoothOn();
@@ -809,19 +808,47 @@ final class LgHome {
             if (key.startsWith("top")) { v.setBackground(glass(20, true)); tint(v, 0xFFFFFFFF); }
             return;
         }
+        // Focus is glass too: brighter frosted glass with a bright edge, lifted by the scale and elevation above.
         if (key.startsWith("q") || key.startsWith("top")) {
-            GradientDrawable fill = new GradientDrawable();
+            int i = key.startsWith("q") ? LgNav.parse(key) : -1;
+            boolean active = i == 0 ? networkUp() : i == 1 && bluetoothOn();
+            GradientDrawable fill = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    active ? new int[]{0x8C96D2FF, 0x406EC1FF} : new int[]{FOCUS_GLASS_TOP, FOCUS_GLASS_BOTTOM});
             fill.setShape(GradientDrawable.OVAL);
-            fill.setColor(0xF5FFFFFF);
+            fill.setStroke(focusEdge(), FOCUS_GLASS_EDGE);
             v.setBackground(fill);
-            tint(v, 0xFF111111);
+            tint(v, 0xFFFFFFFF);
             return;
         }
-        GradientDrawable ring = new GradientDrawable();
-        if (r == null || r < 0) ring.setShape(GradientDrawable.OVAL); else ring.setCornerRadius(px(r));
-        ring.setColor(Color.TRANSPARENT);
-        ring.setStroke(px(3), 0xFFFFFFFF);
-        v.setForeground(ring);
+        if (key.startsWith("a")) {
+            v.setBackground(appCircle(true));
+            return;
+        }
+        // Cards: a thin bright edge and a light sheen across the top, over the card's own picture.
+        GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0x33FFFFFF, 0x00FFFFFF, 0x00FFFFFF});
+        if (r == null || r < 0) sheen.setShape(GradientDrawable.OVAL); else sheen.setCornerRadius(px(r));
+        sheen.setStroke(focusEdge(), FOCUS_GLASS_EDGE);
+        v.setForeground(sheen);
+    }
+
+    /** An app's circle in the band: plain glass, or the brighter focused glass. */
+    private GradientDrawable appCircle(boolean focused) {
+        GradientDrawable circle = focused
+                ? new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x57FFFFFF, 0x1FFFFFFF})
+                : new GradientDrawable();
+        circle.setShape(GradientDrawable.OVAL);
+        if (focused) {
+            circle.setStroke(focusEdge(), FOCUS_GLASS_EDGE);
+        } else {
+            circle.setColor(0x1AFFFFFF);
+            circle.setStroke(Math.max(1, px(1)), 0x29FFFFFF);
+        }
+        return circle;
+    }
+
+    private int focusEdge() {
+        return Math.max(1, px(1.5f));
     }
 
     private static void tint(View v, int color) {

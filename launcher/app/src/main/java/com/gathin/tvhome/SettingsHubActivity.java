@@ -32,8 +32,7 @@ import java.util.function.IntSupplier;
  * panel closes. Back closes it; Back from a Google TV page returns here.
  */
 public class SettingsHubActivity extends Activity {
-    private static final int ROW_TEXT = 0xFFFFFFFF, ROW_SUB = 0x8CFFFFFF, FOCUS_BG = 0xF2FFFFFF, FOCUS_TEXT = 0xFF111111,
-            FOCUS_SUB = 0x8C000000;
+    private static final int ROW_TEXT = 0xFFFFFFFF, ROW_SUB = 0x8CFFFFFF;
     /** Liquid glass, as on Home: a light top-to-bottom gradient with a thin bright edge. */
     private static final int GLASS_TOP = 0x33FFFFFF, GLASS_BOTTOM = 0x0FFFFFFF, GLASS_EDGE = 0x3DFFFFFF;
     private static final String[] CLOCK_FORMATS = {"system", "12", "24"};
@@ -158,23 +157,25 @@ public class SettingsHubActivity extends Activity {
 
         void paint() {
             boolean f = view.hasFocus();
-            view.setBackground(f ? round(FOCUS_BG, 12) : null);
-            title.setTextColor(f ? FOCUS_TEXT : ROW_TEXT);
-            icon.setColorFilter(f ? FOCUS_TEXT : ROW_TEXT);
+            // Focus is glass, as on Home: a brighter glass row with a bright edge; text stays white.
+            view.setBackground(f ? glass(12, 0x57FFFFFF, 0x1FFFFFFF, 0xCCFFFFFF) : null);
+            title.setTextColor(ROW_TEXT);
+            icon.setColorFilter(ROW_TEXT);
             if (f) {
-                iconBg.setColors(new int[]{0x14000000, 0x14000000});
-                iconBg.setStroke(0, 0);
+                iconBg.setColors(new int[]{0x66FFFFFF, 0x29FFFFFF});
+                iconBg.setStroke(Math.max(1, px(1)), 0x99FFFFFF);
             } else {
                 iconBg.setColors(new int[]{GLASS_TOP, GLASS_BOTTOM});
                 iconBg.setStroke(Math.max(1, px(1)), GLASS_EDGE);
             }
-            if (sub != null) sub.setTextColor(f ? FOCUS_SUB : ROW_SUB);
+            if (sub != null) sub.setTextColor(f ? 0xCCFFFFFF : ROW_SUB);
             if (seg != null) {
                 int on = current;
                 for (int i = 0; i < seg.length; i++) {
                     boolean sel = i == on;
-                    seg[i].setBackground(sel ? round(f ? 0xFF111111 : 0xE6FFFFFF, 10) : f ? round(0x12000000, 10) : glass(10));
-                    seg[i].setTextColor(sel ? (f ? 0xFFFFFFFF : 0xFF111111) : f ? 0x99000000 : 0xCCFFFFFF);
+                    seg[i].setBackground(sel ? round(f ? 0xFFFFFFFF : 0xE6FFFFFF, 10)
+                            : f ? glass(10, 0x42FFFFFF, 0x1AFFFFFF, 0x66FFFFFF) : glass(10));
+                    seg[i].setTextColor(sel ? 0xFF111111 : f ? 0xFFFFFFFF : 0xCCFFFFFF);
                 }
             }
         }
@@ -323,9 +324,13 @@ public class SettingsHubActivity extends Activity {
     }
 
     private GradientDrawable glass(float radius) {
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{GLASS_TOP, GLASS_BOTTOM});
+        return glass(radius, GLASS_TOP, GLASS_BOTTOM, GLASS_EDGE);
+    }
+
+    private GradientDrawable glass(float radius, int top, int bottom, int edge) {
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{top, bottom});
         g.setCornerRadius(px(radius));
-        g.setStroke(Math.max(1, px(1)), GLASS_EDGE);
+        g.setStroke(Math.max(1, px(radius > 11 ? 1.5f : 1)), edge);
         return g;
     }
 

@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fork: liquid glass, as on the LG-style home. Focused is solid white (dark text), selected is brighter glass with a
+<!-- Fork: liquid glass, as on the LG-style home. Focused is bright glass with a bright edge, selected is glass with a
      blue edge, the rest is plain glass: a light gradient with a thin bright edge. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true">
         <shape android:shape="rectangle">
-            <solid android:color="#F2FFFFFF" />
+            <gradient android:angle="270" android:startColor="#66FFFFFF" android:endColor="#26FFFFFF" />
             <corners android:radius="14dp" />
+            <stroke android:width="1.5dp" android:color="#D9FFFFFF" />
         </shape>
     </item>
     <item android:state_selected="true">
