@@ -86,7 +86,7 @@ final class LgHome {
     private TmdbFeed feed;
     private int newIndex;
     /** lg_background "movie_art": TMDB backdrops behind Home, a new one every {@link #ART_MS}. */
-    private static final long ART_MS = 20 * 60 * 1000L;
+    private static final long ART_MS = 60 * 1000L;
     private boolean movieArt, artDecoding;
     private Bitmap artBitmap;
     private String artKey, shownArtKey;
@@ -97,7 +97,7 @@ final class LgHome {
                     && !titles.get(Tmdb.artIndex(System.currentTimeMillis(), ART_MS, titles.size())).backdrop.equals(artKey)) {
                 build();
             }
-            handler.postDelayed(this, 60_000);
+            handler.postDelayed(this, untilNextArt());
         }
     };
     private final List<View> slideViews = new ArrayList<>();
@@ -189,8 +189,13 @@ final class LgHome {
         if (movieArt) {
             feed.ensureArt(() -> { if (resumed) build(); });
             handler.removeCallbacks(artTick);
-            handler.postDelayed(artTick, 60_000);
+            handler.postDelayed(artTick, untilNextArt());
         }
+    }
+
+    /** Wakes just after the clock moves to the next backdrop, so each one shows its full turn. */
+    private static long untilNextArt() {
+        return ART_MS - System.currentTimeMillis() % ART_MS + 250;
     }
 
     void onPause() {
