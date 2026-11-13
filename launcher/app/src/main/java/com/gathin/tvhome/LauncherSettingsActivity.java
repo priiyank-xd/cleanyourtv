@@ -38,6 +38,10 @@ public final class LauncherSettingsActivity extends Activity {
     private TextView animationsChoice;
     private TextView advancedChoice;
     private TextView followThemeChoice;
+    /** Fork: Home background (LG-style home), picture or movie art. */
+    private static final String[] LG_BACKGROUNDS = {"picture", Config.LG_MOVIE_ART};
+    private final TextView[] lgBackgroundChoices = new TextView[LG_BACKGROUNDS.length];
+    private String lgBackground;
     private TextView openOnStartChoice;
     private int columns;
     private int rowsBelowDock;
@@ -152,12 +156,29 @@ public final class LauncherSettingsActivity extends Activity {
             openOnStartChoice.setVisibility(View.VISIBLE);
             openOnStartChoice.setOnClickListener(v -> showOpenOnStartPicker());
         }
+        lgBackground = Config.lgBackground(this);
+        findViewById(R.id.lgBackgroundGroup).setVisibility(
+                Config.HOME_LG.equals(Config.homeLayout(this)) ? View.VISIBLE : View.GONE);
+        int[] lgBackgroundIds = {R.id.lgBgPicture, R.id.lgBgMovieArt};
+        for (int i = 0; i < lgBackgroundIds.length; i++) {
+            final String value = LG_BACKGROUNDS[i];
+            lgBackgroundChoices[i] = findViewById(lgBackgroundIds[i]);
+            lgBackgroundChoices[i].setOnClickListener(v -> {
+                if (value.equals(lgBackground)) return;
+                lgBackground = value;
+                choices.edit().putString(Config.LG_BACKGROUND_KEY, value).apply();
+                changed();
+                refresh();
+            });
+        }
         followThemeChoice = findViewById(R.id.followThemeChoice);
         followThemeChoice.setOnClickListener(v -> {
             if (!hasOnTvChoices()) return;
             choices.edit().remove("columns").remove(Config.ROWS_BELOW_DOCK_KEY).remove("animations")
                     .remove("advanced_effects").remove(Config.WALLPAPER_CHOICE_KEY)
-                    .remove(Config.DOCK_OPACITY_KEY).remove(Config.CLOCK_FORMAT_KEY).remove(OpenOnStart.KEY).commit();
+                    .remove(Config.DOCK_OPACITY_KEY).remove(Config.CLOCK_FORMAT_KEY).remove(OpenOnStart.KEY)
+                    .remove(Config.LG_BACKGROUND_KEY).commit();
+            lgBackground = Config.lgBackground(this);
             Config current = Config.load(this);
             columns = current.columns;
             rowsBelowDock = current.rowsBelowDock;
@@ -305,6 +326,9 @@ public final class LauncherSettingsActivity extends Activity {
         for (int i = 0; i < clockChoices.length; i++) {
             clockChoices[i].setSelected(CLOCK_FORMATS[i].equals(clockFormat));
         }
+        for (int i = 0; i < lgBackgroundChoices.length; i++) {
+            lgBackgroundChoices[i].setSelected(LG_BACKGROUNDS[i].equals(lgBackground));
+        }
         animationsChoice.setText(getString(R.string.animations_state,
                 getString(animations ? R.string.on : R.string.off)));
         advancedChoice.setText(getString(R.string.advanced_effects_state,
@@ -324,7 +348,8 @@ public final class LauncherSettingsActivity extends Activity {
         return choices.contains("columns") || choices.contains(Config.ROWS_BELOW_DOCK_KEY)
                 || choices.contains("animations") || choices.contains("advanced_effects")
                 || choices.contains(Config.WALLPAPER_CHOICE_KEY) || choices.contains(Config.DOCK_OPACITY_KEY)
-                || choices.contains(Config.CLOCK_FORMAT_KEY) || choices.contains(OpenOnStart.KEY);
+                || choices.contains(Config.CLOCK_FORMAT_KEY) || choices.contains(OpenOnStart.KEY)
+                || choices.contains(Config.LG_BACKGROUND_KEY);
     }
 
     private void open(Intent intent) {

@@ -445,9 +445,22 @@ final class Config {
     /** lg_background "movie_art": the LG-style home's background rotates TMDB backdrops instead of the picture. */
     static final String LG_MOVIE_ART = "movie_art";
 
-    /** config.xml lg_background, overlaid by a theme's config.json; "movie_art" or "picture" (anything else). */
+    /** Launcher settings' Home background row (on-TV choice, cleared by Follow theme). */
+    static final String LG_BACKGROUND_KEY = "lg_background";
+
+    /**
+     * lg_background: the choice made in Launcher settings on the TV first, then the theme's config.json, then
+     * config.xml; "movie_art" or "picture" (anything else).
+     */
     static String lgBackground(Context ctx) {
-        return LG_MOVIE_ART.equalsIgnoreCase(overlayString(ctx, R.string.lg_background, "lg_background")) ? LG_MOVIE_ART : "picture";
+        String chosen = ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE).getString(LG_BACKGROUND_KEY, null);
+        return lgBackgroundFrom(chosen, overlayString(ctx, R.string.lg_background, LG_BACKGROUND_KEY));
+    }
+
+    /** The on-TV choice when there is one, else the theme's (or config.xml's) value, normalised. */
+    static String lgBackgroundFrom(String chosen, String themed) {
+        String v = chosen != null ? chosen : themed;
+        return LG_MOVIE_ART.equalsIgnoreCase(v == null ? "" : v.trim()) ? LG_MOVIE_ART : "picture";
     }
 
     /** A string key from config.xml, overlaid by the theme's config.json when that names it. */

@@ -170,6 +170,13 @@ final class LgHome {
 
     void onResume() {
         resumed = true;
+        // Home background may have changed in Launcher settings (or a pushed theme) while Home was hidden.
+        boolean wantArt = Config.LG_MOVIE_ART.equals(Config.lgBackground(act));
+        if (wantArt != movieArt) {
+            movieArt = wantArt;
+            feed.wantArt(wantArt);
+            if (!wantArt) { artBitmap = null; artKey = null; shownArtKey = null; }
+        }
         build();
         handler.removeCallbacks(advance);
         handler.postDelayed(advance, SLIDE_MS);
