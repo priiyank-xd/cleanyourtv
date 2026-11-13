@@ -77,6 +77,17 @@ public class TmdbTest {
         assertEquals(Arrays.asList("B", "Same id, other kind", "A"), Arrays.asList(out.get(0).name, out.get(1).name, out.get(2).name));
     }
 
+    @Test public void movieArtRotatesEveryPeriodFromTheClock() {
+        long period = 20 * 60 * 1000L;
+        assertEquals(0, Tmdb.artIndex(0, period, 5));
+        assertEquals(0, Tmdb.artIndex(period - 1, period, 5));
+        assertEquals(1, Tmdb.artIndex(period, period, 5));
+        assertEquals(0, Tmdb.artIndex(5 * period, period, 5));     // wraps around the list
+        assertEquals(3, Tmdb.artIndex(13 * period + 5, period, 5));
+        assertEquals(0, Tmdb.artIndex(123456789L, period, 0));     // no titles: index 0, never a divide by zero
+        assertEquals(0, Tmdb.artIndex(123456789L, 0, 4));
+    }
+
     @Test public void titlesSurviveTheDiskCache() throws Exception {
         Tmdb.Title t = new Tmdb.Title(7, "tv", "Show", "2026-11-02", "/x.jpg", 12.5);
         t.provider = 2336;

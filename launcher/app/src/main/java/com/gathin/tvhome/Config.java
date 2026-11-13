@@ -439,13 +439,26 @@ final class Config {
 
     /** config.xml home_layout, overlaid by a theme's config.json; "lg" or "classic" (anything else). */
     static String homeLayout(Context ctx) {
-        String value = ctx.getString(R.string.home_layout).trim();
+        return HOME_LG.equalsIgnoreCase(overlayString(ctx, R.string.home_layout, "home_layout")) ? HOME_LG : "classic";
+    }
+
+    /** lg_background "movie_art": the LG-style home's background rotates TMDB backdrops instead of the picture. */
+    static final String LG_MOVIE_ART = "movie_art";
+
+    /** config.xml lg_background, overlaid by a theme's config.json; "movie_art" or "picture" (anything else). */
+    static String lgBackground(Context ctx) {
+        return LG_MOVIE_ART.equalsIgnoreCase(overlayString(ctx, R.string.lg_background, "lg_background")) ? LG_MOVIE_ART : "picture";
+    }
+
+    /** A string key from config.xml, overlaid by the theme's config.json when that names it. */
+    private static String overlayString(Context ctx, int resId, String key) {
+        String value = ctx.getString(resId).trim();
         File dir = dir(ctx);
         File file = dir != null ? new File(dir, FILE_NAME) : null;
         boolean mounted = Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState());
         JSONObject json = readOverlay(ctx, file, mounted);
-        if (json != null) value = string(json, "home_layout", value);
-        return HOME_LG.equalsIgnoreCase(value) ? HOME_LG : "classic";
+        if (json != null) value = string(json, key, value);
+        return value;
     }
 
     /** The folder the theme tools push into; null when external storage is unavailable. */

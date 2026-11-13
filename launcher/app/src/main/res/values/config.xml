@@ -94,6 +94,9 @@
     <!-- Home layout: "lg" is the LG-style home (feature card, quick settings, art clock, widgets, app band);
          "classic" is the original dock and grid. A theme's config.json can switch it with "home_layout". -->
     <string name="home_layout" translatable="false">lg</string>
+    <!-- LG-style home background: "picture" (the theme's wallpaper) or "movie_art" (TMDB backdrops of titles on
+         your apps, a new one every 20 minutes, with a credit line). -->
+    <string name="lg_background" translatable="false">picture</string>
     <string-array name="app_banners">
         <!-- Bare logos on a transparent background, bundled in res/drawable-nodpi. -->
         <item>com.netflix.ninja=banner_netflix</item>

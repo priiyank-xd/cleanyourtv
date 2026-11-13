@@ -26,7 +26,7 @@ import java.util.concurrent.Executors;
  * "New this week" and "Trending" for the LG-style home, from TMDB. Kept on disk (files/tmdb_feed.json, images in
  * cache/tmdb) so Home shows the last answer at once and never waits on the network; refreshed in the background
  * when older than {@link #MAX_AGE_MS} or when the set of streaming apps changes. Images are TMDB's w780 backdrops,
- * decoded small.
+ * decoded small, and with the movie-art background on, w1280 ones for the full screen.
  */
 final class TmdbFeed {
     interface Listener {
@@ -38,6 +38,9 @@ final class TmdbFeed {
     static final long RETRY_MS = 15 * 60 * 1000L;
     static final int MAX_NEW = 8, MAX_TRENDING = 3, TRENDING_CHECKS = 20;
     private static final String TAG = "TmdbFeed", FILE = "tmdb_feed.json", SIZE = "w780";
+    /** Full-screen backdrops for the movie-art background (lg_background "movie_art"), only when it is on. */
+    static final String ART_SIZE = "w1280";
+    private volatile boolean wantArt;
 
     private final Context app;
     private final String token;
@@ -67,6 +70,40 @@ final class TmdbFeed {
 
     List<Tmdb.Title> trending() {
         return trending;
+    }
+
+    /** Whether to keep full-screen backdrops for the movie-art background. */
+    void wantArt(boolean on) {
+        wantArt = on;
+    }
+
+    /** The titles the movie-art background rotates through: trending first, then new this week, no repeats. */
+    List<Tmdb.Title> artTitles() {
+        List<Tmdb.Title> out = new ArrayList<>();
+        Set<String> seen = new java.util.HashSet<>();
+        for (Tmdb.Title t : trending) if (seen.add(t.backdrop)) out.add(t);
+        for (Tmdb.Title t : fresh) if (seen.add(t.backdrop)) out.add(t);
+        return out;
+    }
+
+    /** Downloads any full-screen backdrop the current lists lack (movie art just switched on); then {@code done}. */
+    void ensureArt(Listener done) {
+        if (!wantArt || worker.isShutdown()) return;
+        List<Tmdb.Title> titles = artTitles();
+        worker.execute(() -> {
+            boolean added = false;
+            for (Tmdb.Title t : titles) added |= cacheImage(t.backdrop, ART_SIZE);
+            if (added) main.post(done::onFeed);
+        });
+    }
+
+    /** Decodes a title's full-screen backdrop on the worker thread; {@code done} gets null when it is not on disk. */
+    void decodeArt(Tmdb.Title t, int width, Decoded done) {
+        if (worker.isShutdown()) return;
+        worker.execute(() -> {
+            Bitmap b = image(t, width, ART_SIZE);
+            main.post(() -> done.onBitmap(b));
+        });
     }
 
     /** Refreshes in the background if stale or the apps changed; {@code listener} runs on the main thread after. */
@@ -100,14 +137,14 @@ final class TmdbFeed {
     void decode(Tmdb.Title t, int width, Decoded done) {
         if (worker.isShutdown()) return;
         worker.execute(() -> {
-            Bitmap b = image(t, width);
+            Bitmap b = image(t, width, SIZE);
             main.post(() -> done.onBitmap(b));
         });
     }
 
     /** The cached backdrop for a title, decoded no wider than {@code width} pixels, or null when not yet on disk. */
-    private Bitmap image(Tmdb.Title t, int width) {
-        File f = imageFile(t.backdrop);
+    private Bitmap image(Tmdb.Title t, int width, String size) {
+        File f = imageFile(t.backdrop, size);
         if (!f.isFile()) return null;
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
@@ -148,8 +185,12 @@ final class TmdbFeed {
         if (newList.isEmpty() && trendList.isEmpty()) throw new java.io.IOException("TMDB returned no titles on your apps");
         if (newList.isEmpty()) newList = fresh;
         if (trendList.isEmpty()) trendList = trending;
-        for (Tmdb.Title t : newList) cacheImage(t.backdrop);
-        for (Tmdb.Title t : trendList) cacheImage(t.backdrop);
+        for (Tmdb.Title t : newList) cacheImage(t.backdrop, SIZE);
+        for (Tmdb.Title t : trendList) cacheImage(t.backdrop, SIZE);
+        if (wantArt) {
+            for (Tmdb.Title t : trendList) cacheImage(t.backdrop, ART_SIZE);
+            for (Tmdb.Title t : newList) cacheImage(t.backdrop, ART_SIZE);
+        }
         fresh = newList;
         trending = trendList;
         fetchedAt = System.currentTimeMillis();
@@ -166,21 +207,24 @@ final class TmdbFeed {
         }
     }
 
-    private void cacheImage(String path) {
-        File f = imageFile(path);
-        if (f.isFile()) return;
+    /** Downloads one backdrop at {@code size} unless it is on disk; true when it newly arrived. */
+    private boolean cacheImage(String path, String size) {
+        File f = imageFile(path, size);
+        if (f.isFile()) return false;
         try {
-            byte[] bytes = Tmdb.download(Tmdb.imageUrl(path, SIZE));
+            byte[] bytes = Tmdb.download(Tmdb.imageUrl(path, size));
             File dir = f.getParentFile();
-            if (dir != null && !dir.isDirectory() && !dir.mkdirs()) return;
+            if (dir != null && !dir.isDirectory() && !dir.mkdirs()) return false;
             File tmp = new File(f.getPath() + ".part");
             try (FileOutputStream out = new FileOutputStream(tmp)) {
                 out.write(bytes);
             }
-            if (!tmp.renameTo(f)) tmp.delete();
+            if (tmp.renameTo(f)) return true;
+            tmp.delete();
         } catch (Exception e) {
             Log.w(TAG, "image " + path + ": " + e.getMessage());
         }
+        return false;
     }
 
     /** Keeps only the images the current lists use. */
@@ -188,14 +232,16 @@ final class TmdbFeed {
         File[] files = new File(app.getCacheDir(), "tmdb").listFiles();
         if (files == null) return;
         List<String> keep = new ArrayList<>();
-        for (Tmdb.Title t : fresh) keep.add(imageFile(t.backdrop).getName());
-        for (Tmdb.Title t : trending) keep.add(imageFile(t.backdrop).getName());
+        for (Tmdb.Title t : artTitles()) {
+            keep.add(imageFile(t.backdrop, SIZE).getName());
+            if (wantArt) keep.add(imageFile(t.backdrop, ART_SIZE).getName());
+        }
         for (File f : files) if (!keep.contains(f.getName())) f.delete();
     }
 
-    private File imageFile(String path) {
+    private File imageFile(String path, String size) {
         String name = path.replaceAll("[^A-Za-z0-9._-]", "");
-        return new File(new File(app.getCacheDir(), "tmdb"), SIZE + "_" + name);
+        return new File(new File(app.getCacheDir(), "tmdb"), size + "_" + name);
     }
 
     // ---- disk cache of the lists ----

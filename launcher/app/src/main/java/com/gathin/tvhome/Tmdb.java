@@ -179,6 +179,15 @@ final class Tmdb {
         return 0;
     }
 
+    /**
+     * Which of {@code count} backdrops the movie-art background shows at {@code nowMs}: the next one every
+     * {@code rotateMs}, from the clock alone, so a restart of Home keeps the picture until its turn ends.
+     */
+    static int artIndex(long nowMs, long rotateMs, int count) {
+        if (count <= 0 || rotateMs <= 0) return 0;
+        return (int) ((nowMs / rotateMs) % count);
+    }
+
     /** Movies and series together, most popular first, without repeats, at most {@code max}. */
     static List<Title> merge(List<Title> a, List<Title> b, int max) {
         List<Title> all = new ArrayList<>(a);

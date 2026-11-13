@@ -85,6 +85,21 @@ final class LgHome {
     private final Map<String, Bitmap> art = new HashMap<>();
     private TmdbFeed feed;
     private int newIndex;
+    /** lg_background "movie_art": TMDB backdrops behind Home, a new one every {@link #ART_MS}. */
+    private static final long ART_MS = 20 * 60 * 1000L;
+    private boolean movieArt, artDecoding;
+    private Bitmap artBitmap;
+    private String artKey, shownArtKey;
+    private final Runnable artTick = new Runnable() {
+        @Override public void run() {
+            List<Tmdb.Title> titles = feed.artTitles();
+            if (resumed && !titles.isEmpty()
+                    && !titles.get(Tmdb.artIndex(System.currentTimeMillis(), ART_MS, titles.size())).backdrop.equals(artKey)) {
+                build();
+            }
+            handler.postDelayed(this, 60_000);
+        }
+    };
     private final List<View> slideViews = new ArrayList<>();
     private final List<View> slideDots = new ArrayList<>();
     private final List<LgApps.App> chips = new ArrayList<>();
@@ -138,6 +153,8 @@ final class LgHome {
         act.setContentView(root);
         wallpaper = loadWallpaper(cfg.wallpaper, w);
         feed = new TmdbFeed(act, BuildConfig.TMDB_TOKEN);
+        movieArt = Config.LG_MOVIE_ART.equals(Config.lgBackground(act));
+        feed.wantArt(movieArt);
         IntentFilter packages = new IntentFilter();
         packages.addAction(Intent.ACTION_PACKAGE_ADDED);
         packages.addAction(Intent.ACTION_PACKAGE_REMOVED);
@@ -162,10 +179,16 @@ final class LgHome {
         List<String> pkgs = new ArrayList<>();
         for (LgApps.App a : apps) pkgs.add(a.pkg);
         feed.refreshIfStale(pkgs, () -> { if (resumed) build(); });
+        if (movieArt) {
+            feed.ensureArt(() -> { if (resumed) build(); });
+            handler.removeCallbacks(artTick);
+            handler.postDelayed(artTick, 60_000);
+        }
     }
 
     void onPause() {
         resumed = false;
+        handler.removeCallbacks(artTick);
         handler.removeCallbacks(advance);
         handler.removeCallbacks(rotateNew);
     }
@@ -239,6 +262,7 @@ final class LgHome {
     }
 
     private void background() {
+        if (movieArt && movieArtBackground()) return;
         if (wallpaper != null) {
             ImageView bg = new ImageView(act);
             bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -252,6 +276,50 @@ final class LgHome {
             bg.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF15161D, 0xFF07070A}));
             root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
         }
+    }
+
+    /**
+     * The movie-art background: the current TMDB backdrop, darkened at least 40% so the glass cards stay readable,
+     * fading in when it changes, with a credit line under the date. False while there is nothing to show yet (no
+     * titles, or the first picture still decoding), so the theme's picture stands in.
+     */
+    private boolean movieArtBackground() {
+        List<Tmdb.Title> titles = feed.artTitles();
+        if (titles.isEmpty()) return false;
+        Tmdb.Title want = titles.get(Tmdb.artIndex(System.currentTimeMillis(), ART_MS, titles.size()));
+        if (!want.backdrop.equals(artKey) && !artDecoding) {
+            artDecoding = true;
+            String key = want.backdrop;
+            feed.decodeArt(want, act.getResources().getDisplayMetrics().widthPixels, b -> {
+                artDecoding = false;
+                if (b == null) return;
+                artBitmap = b;
+                artKey = key;
+                if (resumed) build();
+            });
+        }
+        if (artBitmap == null) return false;
+        ImageView bg = new ImageView(act);
+        bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        bg.setImageBitmap(artBitmap);
+        root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
+        if (!artKey.equals(shownArtKey)) {
+            bg.setAlpha(0f);
+            bg.animate().alpha(1f).setDuration(ms(1200)).start();
+            shownArtKey = artKey;
+        }
+        View dim = new View(act);
+        dim.setBackgroundColor(Color.argb(Math.round(255 * Math.min(90, Math.max(40, cfg.wallpaperDim)) / 100f), 0, 0, 0));
+        root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
+        for (Tmdb.Title t : titles) {
+            if (!t.backdrop.equals(artKey)) continue;
+            LgApps.App on = appForProvider(t.provider);
+            String credit = on != null ? act.getString(R.string.lg_backdrop_credit, t.name, on.label)
+                    : act.getString(R.string.lg_backdrop_credit_plain, t.name);
+            place(root, text(credit, 11, R.string.font_regular, 0xA6FFFFFF), 40, 60, 560, -1);
+            break;
+        }
+        return true;
     }
 
     private void header() {
