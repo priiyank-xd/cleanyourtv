@@ -85,8 +85,10 @@ final class LgHome {
     private final Map<String, Bitmap> art = new HashMap<>();
     private TmdbFeed feed;
     private int newIndex;
-    /** lg_background "movie_art": TMDB backdrops behind Home, a new one every {@link #ART_MS}. */
-    private static final long ART_MS = 60 * 1000L;
+    /** lg_background "movie_art": TMDB backdrops behind Home, a new one every artMs (Settings menu, 1 min default). */
+    private long artMs = 60 * 1000L;
+    /** The settings revision cfg was loaded at; the Settings menu bumps it. */
+    private long cfgRevision;
     private boolean movieArt, artDecoding;
     private Bitmap artBitmap;
     private String artKey, shownArtKey;
@@ -94,7 +96,7 @@ final class LgHome {
         @Override public void run() {
             List<Tmdb.Title> titles = feed.artTitles();
             if (resumed && !titles.isEmpty()
-                    && !titles.get(Tmdb.artIndex(System.currentTimeMillis(), ART_MS, titles.size())).backdrop.equals(artKey)) {
+                    && !titles.get(Tmdb.artIndex(System.currentTimeMillis(), artMs, titles.size())).backdrop.equals(artKey)) {
                 build();
             }
             handler.postDelayed(this, untilNextArt());
@@ -143,6 +145,8 @@ final class LgHome {
 
     void onCreate() {
         cfg = Config.load(act);
+        cfgRevision = revision();
+        artMs = Config.lgArtMinutes(act) * 60_000L;
         int w = act.getResources().getDisplayMetrics().widthPixels;
         u = w / 960f;
         root = new FrameLayout(act);
@@ -170,7 +174,12 @@ final class LgHome {
 
     void onResume() {
         resumed = true;
-        // Home background may have changed in Launcher settings (or a pushed theme) while Home was hidden.
+        // Choices may have changed in the Settings menu or Launcher settings while Home was hidden.
+        if (revision() != cfgRevision) {
+            cfg = Config.load(act);
+            cfgRevision = revision();
+        }
+        artMs = Config.lgArtMinutes(act) * 60_000L;
         boolean wantArt = Config.LG_MOVIE_ART.equals(Config.lgBackground(act));
         if (wantArt != movieArt) {
             movieArt = wantArt;
@@ -194,8 +203,8 @@ final class LgHome {
     }
 
     /** Wakes just after the clock moves to the next backdrop, so each one shows its full turn. */
-    private static long untilNextArt() {
-        return ART_MS - System.currentTimeMillis() % ART_MS + 250;
+    private long untilNextArt() {
+        return artMs - System.currentTimeMillis() % artMs + 250;
     }
 
     void onPause() {
@@ -230,7 +239,7 @@ final class LgHome {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) okDown = true;
             else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && okDown && focus.equals("top1")) {
                 okDown = false;
-                start(new Intent(act, LauncherSettingsActivity.class));
+                openSettings(true);
             } else if (e.getAction() == KeyEvent.ACTION_UP && okDown) {
                 okDown = false;
                 activate();
@@ -298,7 +307,7 @@ final class LgHome {
     private boolean movieArtBackground() {
         List<Tmdb.Title> titles = feed.artTitles();
         if (titles.isEmpty()) return false;
-        Tmdb.Title want = titles.get(Tmdb.artIndex(System.currentTimeMillis(), ART_MS, titles.size()));
+        Tmdb.Title want = titles.get(Tmdb.artIndex(System.currentTimeMillis(), artMs, titles.size()));
         if (!want.backdrop.equals(artKey) && !artDecoding) {
             artDecoding = true;
             String key = want.backdrop;
@@ -339,6 +348,7 @@ final class LgHome {
         time.setFormat12Hour("h:mm a");
         time.setFormat24Hour("HH:mm");
         style(time, 30, R.string.font_light, 0xFFFFFFFF);
+        ClockFormat.apply(time, cfg.clockFormat);
         place(root, time, 40, 22, -1, -1);
         TextClock date = new TextClock(act);
         date.setFormat12Hour("EEEE  d MMMM");
@@ -837,7 +847,7 @@ final class LgHome {
             return;
         }
         if (focus.equals("top0")) { search(null); return; }
-        if (focus.equals("top1")) { start(SystemSettings.intent(act, Settings.ACTION_SETTINGS)); return; }
+        if (focus.equals("top1")) { openSettings(false); return; }
         if (focus.equals("clock")) { start(new Intent(act, ClockActivity.class)); return; }
         if (focus.equals("w1")) {
             List<Tmdb.Title> list = feed.newThisWeek();
@@ -861,13 +871,28 @@ final class LgHome {
      * back to Home), so pick another app's handler; Settings if the TV has none.
      */
     void openInputs() {
+        start(inputsIntent(act));
+    }
+
+    static Intent inputsIntent(Context ctx) {
         Intent view = new Intent(MainActivity.ACTION_VIEW_INPUTS);
-        for (ResolveInfo ri : act.getPackageManager().queryIntentActivities(view, 0)) {
-            if (ri.activityInfo.packageName.equals(act.getPackageName())) continue;
-            start(new Intent(view).setComponent(new ComponentName(ri.activityInfo.packageName, ri.activityInfo.name)));
-            return;
+        for (ResolveInfo ri : ctx.getPackageManager().queryIntentActivities(view, 0)) {
+            if (ri.activityInfo.packageName.equals(ctx.getPackageName())) continue;
+            return new Intent(view).setComponent(new ComponentName(ri.activityInfo.packageName, ri.activityInfo.name));
         }
-        start(SystemSettings.intent(act, Settings.ACTION_SETTINGS));
+        return SystemSettings.intent(ctx, Settings.ACTION_SETTINGS);
+    }
+
+    /** Settings on Home: a press opens the Settings menu or Google TV's settings, as chosen; a hold opens the other. */
+    private void openSettings(boolean hold) {
+        String target = HubChoices.settingsTarget(Config.lgSettingsButton(act), hold);
+        if (HubChoices.OPEN_SYSTEM.equals(target)) start(SystemSettings.intent(act, Settings.ACTION_SETTINGS));
+        else if (HubChoices.OPEN_LAUNCHER.equals(target)) start(new Intent(act, LauncherSettingsActivity.class));
+        else start(new Intent(act, SettingsHubActivity.class));
+    }
+
+    private long revision() {
+        return act.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE).getLong(Config.SETTINGS_REVISION_KEY, 0);
     }
 
     /** Google TV search (Gemini on newer firmware), for a title when one is given: where to watch, ratings, watchlist. */

@@ -191,6 +191,11 @@
 
         <!-- Fork: calibration screens for the projector, opened from the LG-style home's quick settings. -->
         <activity
+            android:name=".SettingsHubActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen" />
+        <activity
             android:name=".CalibrationActivity"
             android:exported="false"
             android:excludeFromRecents="true"

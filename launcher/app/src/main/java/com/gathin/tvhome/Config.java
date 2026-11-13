@@ -457,6 +457,19 @@ final class Config {
         return lgBackgroundFrom(chosen, overlayString(ctx, R.string.lg_background, LG_BACKGROUND_KEY));
     }
 
+    /** Settings menu's "Movie art changes" (minutes, on-TV choice only; cleared by Follow theme). */
+    static final String LG_ART_MINUTES_KEY = "lg_art_minutes";
+    /** Settings menu's "Settings button opens": "hub" (the menu, default) or "system" (Google TV's settings). */
+    static final String LG_SETTINGS_BUTTON_KEY = "lg_settings_button";
+
+    static int lgArtMinutes(Context ctx) {
+        return HubChoices.artMinutes(ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE).getString(LG_ART_MINUTES_KEY, null));
+    }
+
+    static String lgSettingsButton(Context ctx) {
+        return HubChoices.button(ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE).getString(LG_SETTINGS_BUTTON_KEY, null));
+    }
+
     /** The on-TV choice when there is one, else the theme's (or config.xml's) value, normalised. */
     static String lgBackgroundFrom(String chosen, String themed) {
         String v = chosen != null ? chosen : themed;
@@ -816,12 +829,12 @@ final class Config {
             SharedPreferences.Editor editor = choices.edit();
             if (!"absent".equals(token)) editor.remove("columns").remove("animations")
                     .remove("advanced_effects").remove(ROWS_BELOW_DOCK_KEY).remove(WALLPAPER_CHOICE_KEY)
-                    .remove(DOCK_OPACITY_KEY).remove(CLOCK_FORMAT_KEY);
+                    .remove(DOCK_OPACITY_KEY).remove(CLOCK_FORMAT_KEY).remove(LG_BACKGROUND_KEY);
             editor.putString(THEME_SIGNATURE_KEY, signature).commit();
         } else if (!seen.equals(signature)) {
             choices.edit().remove("columns").remove("animations").remove("advanced_effects")
                     .remove(ROWS_BELOW_DOCK_KEY).remove(WALLPAPER_CHOICE_KEY).remove(DOCK_OPACITY_KEY)
-                    .remove(CLOCK_FORMAT_KEY).putString(THEME_SIGNATURE_KEY, signature).commit();
+                    .remove(CLOCK_FORMAT_KEY).remove(LG_BACKGROUND_KEY).putString(THEME_SIGNATURE_KEY, signature).commit();
         }
     }
 

@@ -177,7 +177,7 @@ public final class LauncherSettingsActivity extends Activity {
             choices.edit().remove("columns").remove(Config.ROWS_BELOW_DOCK_KEY).remove("animations")
                     .remove("advanced_effects").remove(Config.WALLPAPER_CHOICE_KEY)
                     .remove(Config.DOCK_OPACITY_KEY).remove(Config.CLOCK_FORMAT_KEY).remove(OpenOnStart.KEY)
-                    .remove(Config.LG_BACKGROUND_KEY).commit();
+                    .remove(Config.LG_BACKGROUND_KEY).remove(Config.LG_ART_MINUTES_KEY).commit();
             lgBackground = Config.lgBackground(this);
             Config current = Config.load(this);
             columns = current.columns;
@@ -349,7 +349,7 @@ public final class LauncherSettingsActivity extends Activity {
                 || choices.contains("animations") || choices.contains("advanced_effects")
                 || choices.contains(Config.WALLPAPER_CHOICE_KEY) || choices.contains(Config.DOCK_OPACITY_KEY)
                 || choices.contains(Config.CLOCK_FORMAT_KEY) || choices.contains(OpenOnStart.KEY)
-                || choices.contains(Config.LG_BACKGROUND_KEY);
+                || choices.contains(Config.LG_BACKGROUND_KEY) || choices.contains(Config.LG_ART_MINUTES_KEY);
     }
 
     private void open(Intent intent) {

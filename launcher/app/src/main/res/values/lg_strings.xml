@@ -28,6 +28,40 @@
     <string name="lg_background_label" translatable="false">Home background</string>
     <string name="lg_background_picture" translatable="false">Picture</string>
     <string name="lg_background_movie_art" translatable="false">Movie art</string>
+    <string name="hub_title" translatable="false">Settings</string>
+    <string name="hub_subtitle" translatable="false">Launcher choices and shortcuts into Google TV</string>
+    <string name="hub_on_home" translatable="false">On Home</string>
+    <string name="hub_projector" translatable="false">Projector</string>
+    <string name="hub_more" translatable="false">More</string>
+    <string name="hub_art_every" translatable="false">Movie art changes</string>
+    <string name="hub_minutes" translatable="false">%1$d min</string>
+    <string name="hub_clock" translatable="false">Clock</string>
+    <string name="hub_button_opens" translatable="false">Settings button opens</string>
+    <string name="hub_button_menu" translatable="false">This menu</string>
+    <string name="hub_button_google" translatable="false">Google TV</string>
+    <string name="hub_follow_theme" translatable="false">Follow theme</string>
+    <string name="hub_follow_theme_sub" translatable="false">Clear background, movie art timing and clock</string>
+    <string name="hub_follow_theme_done" translatable="false">Back to the theme\'s choices</string>
+    <string name="hub_wifi" translatable="false">Wi-Fi and network</string>
+    <string name="hub_wifi_sub" translatable="false">Google TV \u00b7 Network and Internet</string>
+    <string name="hub_bluetooth" translatable="false">Bluetooth and remotes</string>
+    <string name="hub_bluetooth_sub" translatable="false">Google TV \u00b7 Remotes and accessories</string>
+    <string name="hub_display" translatable="false">Display and sound</string>
+    <string name="hub_display_sub" translatable="false">Google TV \u00b7 Resolution, HDR, audio</string>
+    <string name="hub_inputs_sub" translatable="false">HDMI and other sources</string>
+    <string name="hub_patterns" translatable="false">Calibration patterns</string>
+    <string name="hub_patterns_sub" translatable="false">Test screens for focus and colour</string>
+    <string name="hub_launcher" translatable="false">Launcher settings</string>
+    <string name="hub_launcher_sub" translatable="false">Everything else this launcher can change</string>
+    <string name="hub_apps" translatable="false">Apps</string>
+    <string name="hub_apps_sub" translatable="false">Google TV \u00b7 Storage, permissions</string>
+    <string name="hub_date" translatable="false">Date and time</string>
+    <string name="hub_date_sub" translatable="false">Google TV \u00b7 Time zone, format</string>
+    <string name="hub_accessibility" translatable="false">Accessibility</string>
+    <string name="hub_accessibility_sub" translatable="false">Google TV \u00b7 Mute gesture helper</string>
+    <string name="hub_all" translatable="false">All settings</string>
+    <string name="hub_all_sub" translatable="false">The full Google TV settings</string>
+    <string name="hub_not_available" translatable="false">Not available on this projector</string>
     <string name="lg_backdrop_credit" translatable="false">Backdrop: %1$s \u00b7 %2$s \u00b7 TMDB</string>
     <string name="lg_backdrop_credit_plain" translatable="false">Backdrop: %1$s \u00b7 TMDB</string>
     <string name="lg_tmdb_notice" translatable="false">New this week and Trending come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
