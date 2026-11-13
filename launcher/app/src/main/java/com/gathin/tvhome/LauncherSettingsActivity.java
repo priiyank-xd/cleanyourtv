@@ -54,6 +54,7 @@ public final class LauncherSettingsActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         setContentView(R.layout.activity_launcher_settings);
+        addFocusGlow(findViewById(android.R.id.content));
         choices = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
         Config config = Config.load(this);
         View reorderChoice = findViewById(R.id.reorderChoice);
@@ -300,6 +301,24 @@ public final class LauncherSettingsActivity extends Activity {
      * A choice was saved. Home rebuilds when it next resumes because the change count moved, whether these
      * settings are left with Back or with the remote's Home button (which cancels the activity result).
      */
+    /**
+     * Fork: the glass look's soft glow around the focused row. Every focusable row gets a halo foreground that shows
+     * only while focused; parents stop clipping so it can spill past the row.
+     */
+    private void addFocusGlow(View v) {
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            g.setClipChildren(false);
+            g.setClipToPadding(false);
+            for (int i = 0; i < g.getChildCount(); i++) addFocusGlow(g.getChildAt(i));
+        } else if (v.isFocusable()) {
+            float dp = getResources().getDisplayMetrics().density;
+            android.graphics.drawable.StateListDrawable glow = new android.graphics.drawable.StateListDrawable();
+            glow.addState(new int[]{android.R.attr.state_focused}, new GlowDrawable(14 * dp, 12 * dp, 0, 0x4DFFFFFF));
+            v.setForeground(glow);
+        }
+    }
+
     private void changed() {
         setResult(RESULT_OK);
         choices.edit().putLong(Config.SETTINGS_REVISION_KEY,

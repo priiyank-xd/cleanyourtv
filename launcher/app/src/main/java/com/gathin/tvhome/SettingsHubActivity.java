@@ -83,6 +83,7 @@ public class SettingsHubActivity extends Activity {
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(px(16), 0, px(16), px(24));
+        list.setClipChildren(false);   // room for the focused row's glow
         scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
         pane.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -159,6 +160,7 @@ public class SettingsHubActivity extends Activity {
             boolean f = view.hasFocus();
             // Focus is glass, as on Home: a brighter glass row with a bright edge; text stays white.
             view.setBackground(f ? glass(12, 0x57FFFFFF, 0x1FFFFFFF, 0xCCFFFFFF) : null);
+            view.setForeground(f ? new GlowDrawable(px(12), px(12), 0, 0x4DFFFFFF) : null);
             title.setTextColor(ROW_TEXT);
             icon.setColorFilter(ROW_TEXT);
             if (f) {

@@ -111,6 +111,8 @@ final class LgHome {
     private final Map<String, Float> radii = new HashMap<>();
     private LinearLayout strip;
     private FrameLayout feature, chipRow;
+    /** The halo behind the focused card (cards clip to their outline, so it can't be their own foreground). */
+    private View glowView;
     private final View[] quick = new View[QUICK];
     private String focus = "a0";
     private int slide, first;
@@ -563,6 +565,7 @@ final class LgHome {
 
     private void quickSettings() {
         FrameLayout card = new FrameLayout(act);
+        card.setClipChildren(false);   // room for a focused button's glow
         card.setBackground(glass(16, false));
         place(root, card, 624, 76, 296, 116);
         TextView title = text(act.getString(R.string.lg_quick_settings), 12, R.string.font_medium, 0x99FFFFFF);
@@ -750,6 +753,7 @@ final class LgHome {
         chips.addAll(LgApps.recent(apps, MAX_CHIPS));
         for (LgApps.App a : apps) if (chips.size() < MAX_CHIPS && !chips.contains(a)) chips.add(a);
         chipRow = new FrameLayout(act);
+        chipRow.setClipChildren(false);   // room for a focused chip's glow
         place(root, chipRow, 306, 452, 614, 74);
         float cw = (614 - 3 * 10) / 4f;
         for (int i = 0; i < chips.size(); i++) {
@@ -798,6 +802,7 @@ final class LgHome {
         Float r = radii.get(key);
         if (!on) {
             v.setForeground(null);
+            removeGlow();
             if (key.startsWith("a")) v.setBackground(appCircle(false));
             if (key.startsWith("q")) {
                 int i = LgNav.parse(key);
@@ -817,11 +822,13 @@ final class LgHome {
             fill.setShape(GradientDrawable.OVAL);
             fill.setStroke(focusEdge(), FOCUS_GLASS_EDGE);
             v.setBackground(fill);
+            v.setForeground(new GlowDrawable(-1, px(14), 0, 0x66FFFFFF));
             tint(v, 0xFFFFFFFF);
             return;
         }
         if (key.startsWith("a")) {
             v.setBackground(appCircle(true));
+            v.setForeground(new GlowDrawable(-1, px(16), 0, 0x66FFFFFF));
             return;
         }
         // Cards: a thin bright edge and a light sheen across the top, over the card's own picture.
@@ -830,6 +837,31 @@ final class LgHome {
         if (r == null || r < 0) sheen.setShape(GradientDrawable.OVAL); else sheen.setCornerRadius(px(r));
         sheen.setStroke(focusEdge(), FOCUS_GLASS_EDGE);
         v.setForeground(sheen);
+        glowBehind(v, r == null ? -1 : r, scale);
+    }
+
+    /** A glow view just behind a card, as big as the card plus the halo, scaled with it. */
+    private void glowBehind(View v, float radius, float scale) {
+        removeGlow();
+        if (!(v.getParent() instanceof FrameLayout) || !(v.getLayoutParams() instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout parent = (FrameLayout) v.getParent();
+        FrameLayout.LayoutParams vl = (FrameLayout.LayoutParams) v.getLayoutParams();
+        int pad = px(24);
+        FrameLayout.LayoutParams gl = new FrameLayout.LayoutParams(vl.width + 2 * pad, vl.height + 2 * pad);
+        gl.leftMargin = vl.leftMargin - pad;
+        gl.topMargin = vl.topMargin - pad;
+        View glow = new View(act);
+        glow.setBackground(new GlowDrawable(radius < 0 ? -1 : px(radius), px(20), pad, 0x55FFFFFF));
+        parent.addView(glow, parent.indexOfChild(v), gl);
+        glow.setScaleX(1f);
+        glow.setScaleY(1f);
+        glow.animate().scaleX(scale).scaleY(scale).setDuration(ms(220)).start();
+        glowView = glow;
+    }
+
+    private void removeGlow() {
+        if (glowView != null && glowView.getParent() instanceof ViewGroup) ((ViewGroup) glowView.getParent()).removeView(glowView);
+        glowView = null;
     }
 
     /** An app's circle in the band: plain glass, or the brighter focused glass. */
