@@ -42,6 +42,10 @@
         <intent>
             <action android:name="android.settings.MANAGE_APPLICATIONS_SETTINGS" />
         </intent>
+        <!-- Fork: Launcher settings lists the installed screensavers (ours, Aerial Views) to switch between. -->
+        <intent>
+            <action android:name="android.service.dreams.DreamService" />
+        </intent>
         <!-- The tile menu and the app library offer App info only where this resolves (SystemSettings.appInfo). -->
         <intent>
             <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />

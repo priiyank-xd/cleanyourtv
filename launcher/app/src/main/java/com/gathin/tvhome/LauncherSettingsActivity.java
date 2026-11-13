@@ -35,6 +35,9 @@ public final class LauncherSettingsActivity extends Activity {
     private static final String[] CLOCK_FORMATS = {"system", "12", "24"};
     private final TextView[] clockChoices = new TextView[CLOCK_FORMATS.length];
     private TextView wallpaperChoice;
+    /** Fork: which installed screensaver Android runs (ours with the theme photos, or Aerial Views). */
+    private TextView screensaverChoice;
+    private static final String SCREENSAVER_COMPONENTS = "screensaver_components";
     private TextView animationsChoice;
     private TextView advancedChoice;
     private TextView followThemeChoice;
@@ -130,6 +133,8 @@ public final class LauncherSettingsActivity extends Activity {
         }
         wallpaperChoice = findViewById(R.id.wallpaperChoice);
         wallpaperChoice.setOnClickListener(v -> showWallpaperPicker());
+        screensaverChoice = findViewById(R.id.screensaverChoice);
+        screensaverChoice.setOnClickListener(v -> showScreensaverPicker());
         animationsChoice = findViewById(R.id.animationsChoice);
         animationsChoice.setOnClickListener(v -> {
             animations = !animations;
@@ -277,6 +282,67 @@ public final class LauncherSettingsActivity extends Activity {
                 .show();
     }
 
+    /** Every installed screensaver; ours is named "Photos and clock". Needs WRITE_SECURE_SETTINGS (pm grant). */
+    private List<ResolveInfo> screensavers() {
+        return getPackageManager().queryIntentServices(
+                new Intent(android.service.dreams.DreamService.SERVICE_INTERFACE), 0);
+    }
+
+    private String screensaverName(ResolveInfo r) {
+        if (r.serviceInfo.packageName.equals(getPackageName())) return getString(R.string.screensaver_photos_clock);
+        return r.loadLabel(getPackageManager()).toString();
+    }
+
+    private static String flat(ResolveInfo r) {
+        return new android.content.ComponentName(r.serviceInfo.packageName, r.serviceInfo.name).flattenToString();
+    }
+
+    /** The active screensaver as flattened components; Android may store a comma-separated list. */
+    private String currentScreensaver() {
+        String value = Settings.Secure.getString(getContentResolver(), SCREENSAVER_COMPONENTS);
+        return value == null ? "" : value.split(",")[0];
+    }
+
+    private void showScreensaverPicker() {
+        List<ResolveInfo> dreams = screensavers();
+        if (dreams.isEmpty()) {
+            Toast.makeText(this, R.string.not_available, Toast.LENGTH_LONG).show();
+            return;
+        }
+        android.content.ComponentName cn = android.content.ComponentName.unflattenFromString(currentScreensaver());
+        String current = cn == null ? "" : cn.flattenToString();   // adb may have set the short ".ClockDream" form
+        String[] labels = new String[dreams.size()];
+        int checked = -1;
+        for (int i = 0; i < dreams.size(); i++) {
+            labels[i] = screensaverName(dreams.get(i));
+            if (flat(dreams.get(i)).equals(current)) checked = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.screensaver_label)
+                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                    dialog.dismiss();
+                    try {
+                        Settings.Secure.putString(getContentResolver(), SCREENSAVER_COMPONENTS, flat(dreams.get(which)));
+                        Settings.Secure.putInt(getContentResolver(), "screensaver_enabled", 1);
+                    } catch (SecurityException e) {
+                        Toast.makeText(this, R.string.screensaver_needs_permission, Toast.LENGTH_LONG).show();
+                    }
+                    refresh();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private String screensaverLabel() {
+        String current = currentScreensaver();
+        android.content.ComponentName cn = android.content.ComponentName.unflattenFromString(current);
+        if (cn == null) return getString(R.string.off);
+        for (ResolveInfo r : screensavers()) {
+            if (flat(r).equals(cn.flattenToString())) return screensaverName(r);
+        }
+        return cn.getPackageName();
+    }
+
     /** The picked app's name, its package when it is gone, or Off. */
     private String openOnStartLabel() {
         String pkg = choices.getString(OpenOnStart.KEY, "");
@@ -360,6 +426,7 @@ public final class LauncherSettingsActivity extends Activity {
                         : wallpaperCurrent != null ? wallpaperCurrent
                         : getString(R.string.wallpaper_theme_default)));
         openOnStartChoice.setText(getString(R.string.open_on_start_state, openOnStartLabel()));
+        screensaverChoice.setText(getString(R.string.screensaver_state, screensaverLabel()));
         followThemeChoice.setSelected(!hasOnTvChoices());
     }
 

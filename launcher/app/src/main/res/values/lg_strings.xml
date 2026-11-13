@@ -64,5 +64,9 @@
     <string name="hub_not_available" translatable="false">Not available on this projector</string>
     <string name="lg_backdrop_credit" translatable="false">Backdrop: %1$s \u00b7 %2$s \u00b7 TMDB</string>
     <string name="lg_backdrop_credit_plain" translatable="false">Backdrop: %1$s \u00b7 TMDB</string>
+    <string name="screensaver_state" translatable="false">Screensaver: %1$s</string>
+    <string name="screensaver_label" translatable="false">Screensaver</string>
+    <string name="screensaver_photos_clock" translatable="false">Photos and clock</string>
+    <string name="screensaver_needs_permission" translatable="false">Grant WRITE_SECURE_SETTINGS over ADB first</string>
     <string name="lg_tmdb_notice" translatable="false">New this week and Trending come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
 </resources>
