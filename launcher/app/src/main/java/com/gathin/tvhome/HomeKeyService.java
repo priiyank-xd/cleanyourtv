@@ -50,6 +50,33 @@ import java.util.Set;
  *   settings put secure accessibility_enabled 1
  */
 public class HomeKeyService extends AccessibilityService {
+    /** Fork: Volume Up, Down, Up, Down mutes or unmutes, for remotes without a mute button. Keys still go through. */
+    private final MuteGesture muteGesture = new MuteGesture();
+    private boolean mutedAtStart;
+    private final android.os.Handler muteHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    private void watchMuteGesture(KeyEvent event) {
+        int code = event.getKeyCode();
+        boolean volume = code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN;
+        android.media.AudioManager audio = getSystemService(android.media.AudioManager.class);
+        if (audio == null) return;
+        boolean done = muteGesture.feed(code, event.getAction(), event.getRepeatCount(), event.getEventTime());
+        // Volume Up unmutes on its own, so note the state when a press begins an attempt (a key filter sees the press
+        // before Android applies it), not when the attempt ends. A stale, half-finished attempt starts over here too.
+        if (volume && muteGesture.progress() == 1 && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            mutedAtStart = audio.isStreamMute(android.media.AudioManager.STREAM_MUSIC);
+        }
+        if (!done) return;
+        int adjust = mutedAtStart ? android.media.AudioManager.ADJUST_UNMUTE : android.media.AudioManager.ADJUST_MUTE;
+        // After the last Down has been applied, so the volume is back where it started when the mute lands.
+        muteHandler.postDelayed(() -> {
+            try {
+                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, adjust, android.media.AudioManager.FLAG_SHOW_UI);
+            } catch (SecurityException ignored) {
+            }
+        }, 200);
+    }
+
 
     /** restore_key_services was on when the config was read: this helper is noted for ServiceRepair. */
     private boolean repairRecord;
@@ -256,6 +283,7 @@ public class HomeKeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
+        watchMuteGesture(event);
         // power_on_home: the first key after power-on hands the TV to the user (power and wake keys don't count).
         if (powerOnUntil != 0 && event.getAction() == KeyEvent.ACTION_DOWN
                 && event.getKeyCode() != KeyEvent.KEYCODE_POWER && event.getKeyCode() != KeyEvent.KEYCODE_WAKEUP) {
