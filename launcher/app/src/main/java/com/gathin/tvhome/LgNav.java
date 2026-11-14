@@ -2,7 +2,7 @@ package com.gathin.tvhome;
 
 /**
  * Remote navigation for the LG-style home (home_layout "lg"). Every focusable part has a key:
- * "top0"/"top1" (search, settings), "feat" (feature card), "q0".."qN" (quick settings), "clock" (art clock),
+ * "top0".."top2" (search, settings, profile), "feat" (feature card), "q0".."qN" (quick settings), "clock" (art clock),
  * "w1" (square widget), "a0".."aN" (apps in the band) and "c0".."cN" (chips in the wide widget).
  * Pure Java so the whole map is unit tested; LgHome only draws the result.
  */
@@ -20,11 +20,11 @@ final class LgNav {
     static String next(String key, char dir, int apps, int chips, int quick, int first) {
         int lastApp = apps - 1;
         String appEntry = apps > 0 ? "a0" : "w1";
-        if (key.equals("top0") || key.equals("top1")) {
-            boolean right = key.equals("top1");
-            if (dir == LEFT) return "top0";
-            if (dir == RIGHT) return "top1";
-            if (dir == DOWN) return right ? (quick > 0 ? "q" + (quick - 1) : "clock") : "feat";
+        if (key.startsWith("top")) {
+            int t = parse(key);
+            if (dir == LEFT) return "top" + Math.max(0, t - 1);
+            if (dir == RIGHT) return "top" + Math.min(2, t + 1);
+            if (dir == DOWN) return t > 0 ? (quick > 0 ? "q" + (quick - 1) : "clock") : "feat";
             return key;
         }
         if (key.equals("feat")) {

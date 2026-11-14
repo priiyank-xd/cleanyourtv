@@ -42,6 +42,26 @@
         <intent>
             <action android:name="android.settings.MANAGE_APPLICATIONS_SETTINGS" />
         </intent>
+        <!-- Fork: the LG-style home's Cast button opens Google TV's Chromecast built-in page (SystemSettings.castIntent). -->
+        <intent>
+            <action android:name="com.google.android.settings.CAST_RECEIVER_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.CAST_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.BLUETOOTH_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SOUND_SETTINGS" />
+        </intent>
+        <!-- Fork: the LG-style home's profile button opens Google TV's accounts page (SystemSettings.profileIntent). -->
+        <intent>
+            <action android:name="android.settings.SYNC_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.ADD_ACCOUNT_SETTINGS" />
+        </intent>
         <!-- Fork: Launcher settings lists the installed screensavers (ours, Aerial Views) to switch between. -->
         <intent>
             <action android:name="android.service.dreams.DreamService" />
@@ -118,7 +138,8 @@
             android:name=".LauncherSettingsActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:screenOrientation="landscape" />
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen" />
         <!-- The system input switcher (com.android.tv.action.VIEW_INPUTS), which is what the remote's Input
              button becomes through the TV's Live TV app or InputKeyService. Disabled here and switched on by
              MainActivity only while handle_view_inputs is true (config.xml or a theme), for sets whose stock
@@ -246,6 +267,17 @@
             android:directBootAware="true"
             android:exported="true"
             android:label="@string/home_key_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <!-- Fork: notes the title other apps are playing (their media sessions only) for Home's last-watched card.
+             cmd notification allow_listener com.gathin.tvhome/com.gathin.tvhome.MediaListener -->
+        <service
+            android:name=".MediaListener"
+            android:exported="true"
+            android:label="@string/lg_last_watched"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

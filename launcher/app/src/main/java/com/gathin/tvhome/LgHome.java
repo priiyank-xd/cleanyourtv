@@ -14,9 +14,18 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -52,9 +61,13 @@ final class LgHome {
     // geometry from the locked concept, in 960x540 design units
     private static final float BAND_X = 306, BAND_Y = 330, BAND_W = 700, BAND_H = 108;
     private static final float SZ = 70, STEP = 90;
+    /** The square every app glyph is drawn in, inside its 70-unit circle (Glyphs keeps them one optical size). */
+    private static final float GLYPH = 50;
     private static final int VISIBLE = 7, QUICK = 5, MAX_CHIPS = 4;
     private static final long SLIDE_MS = 6000;
     private static final int GLASS_TOP = 0x24FFFFFF, GLASS_BOTTOM = 0x0DFFFFFF, GLASS_EDGE = 0x33FFFFFF;
+    /** The dark base under every glass surface on Home: 40% opaque, so glass is 60% see-through. */
+    static final int GLASS_TINT = 0x6610141E;
     /** Focused glass: brighter, with a bright edge. */
     private static final int FOCUS_GLASS_TOP = 0x75FFFFFF, FOCUS_GLASS_BOTTOM = 0x2EFFFFFF, FOCUS_GLASS_EDGE = 0xD9FFFFFF;
 
@@ -63,6 +76,8 @@ final class LgHome {
     private float u;
     private Config cfg;
     private FrameLayout root;
+    /** The background (picture or movie art, its dim and credit), first child of root. */
+    private FrameLayout bgLayer;
     private Bitmap wallpaper;
     private List<LgApps.App> apps = new ArrayList<>();
     /** One page of the feature card: an app (last opened or a favourite) or a trending title. */
@@ -81,6 +96,9 @@ final class LgHome {
     }
 
     private static final long NEW_MS = 5000;
+    /** Fork: peek mode of the New this week card (OK opens it): the card magnified over a blurred, dimmed Home. */
+    private boolean newOpen;
+    private View newScrim;
     private final List<Slide> slides = new ArrayList<>();
     private final List<View> newViews = new ArrayList<>();
     private final List<View> newDots = new ArrayList<>();
@@ -99,7 +117,7 @@ final class LgHome {
             List<Tmdb.Title> titles = feed.artTitles();
             if (resumed && !titles.isEmpty()
                     && !titles.get(Tmdb.artIndex(System.currentTimeMillis(), artMs, titles.size())).backdrop.equals(artKey)) {
-                build();
+                refreshBackground();
             }
             handler.postDelayed(this, untilNextArt());
         }
@@ -107,9 +125,15 @@ final class LgHome {
     private final List<View> slideViews = new ArrayList<>();
     private final List<View> slideDots = new ArrayList<>();
     private final List<LgApps.App> chips = new ArrayList<>();
+    /** Fork: the last-watched chip's artwork, decoded again only when the title changes. */
+    private String lastWatchedKey;
+    private Bitmap lastWatchedArt;
     private final Map<String, View> focusables = new HashMap<>();
     private final Map<String, Float> radii = new HashMap<>();
     private LinearLayout strip;
+    /** Fork: the app band, and the label above it that shows while reorder mode is on. */
+    private View bandView, reorderChip;
+    private TextView reorderChipText;
     private FrameLayout feature, chipRow;
     /** The halo behind the focused card (cards clip to their outline, so it can't be their own foreground). */
     private View glowView;
@@ -117,6 +141,9 @@ final class LgHome {
     private String focus = "a0";
     private int slide, first;
     private boolean resumed, okDown;
+    /** Fork: reorder mode, started from the circle after the last app; moving is the app being carried, or -1. */
+    private boolean reordering;
+    private int moving = -1;
     /** Reload the app list on the next build: set at start and whenever an app is installed, removed or updated. */
     private boolean appsDirty = true;
     private final java.util.Set<String> decoding = new java.util.HashSet<>();
@@ -200,7 +227,7 @@ final class LgHome {
         for (LgApps.App a : apps) pkgs.add(a.pkg);
         feed.refreshIfStale(pkgs, () -> { if (resumed) build(); });
         if (movieArt) {
-            feed.ensureArt(() -> { if (resumed) build(); });
+            feed.ensureArt(() -> { if (resumed) refreshBackground(); });
             handler.removeCallbacks(artTick);
             handler.postDelayed(artTick, untilNextArt());
         }
@@ -212,6 +239,7 @@ final class LgHome {
     }
 
     void onPause() {
+        closeNew(false);
         resumed = false;
         handler.removeCallbacks(artTick);
         handler.removeCallbacks(advance);
@@ -219,9 +247,13 @@ final class LgHome {
     }
 
     void onNewIntent() {
-        // Home pressed while Home is showing: back to the start, like a fresh visit.
+        // Home pressed (from an app, or while Home is showing): back to the start, like a fresh visit.
+        if (reordering) endReorder();
+        closeNew(false);
         setFocus("feat");
         showSlide(0);
+        first = 0;   // and the app band back to its first apps
+        if (strip != null) strip.setTranslationX(0);
     }
 
     void onDestroy() {
@@ -238,6 +270,14 @@ final class LgHome {
         char dir = code == KeyEvent.KEYCODE_DPAD_LEFT ? LgNav.LEFT : code == KeyEvent.KEYCODE_DPAD_RIGHT ? LgNav.RIGHT
                 : code == KeyEvent.KEYCODE_DPAD_UP ? LgNav.UP : code == KeyEvent.KEYCODE_DPAD_DOWN ? LgNav.DOWN : 0;
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (reordering && code == KeyEvent.KEYCODE_BACK) {
+            if (e.getAction() == KeyEvent.ACTION_UP) endReorder();
+            return true;
+        }
+        if (newOpen && code == KeyEvent.KEYCODE_BACK) {
+            if (e.getAction() == KeyEvent.ACTION_UP) closeNew(true);
+            return true;
+        }
         if (dir == 0 && !ok) return false;
         if (ok) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) okDown = true;
@@ -251,10 +291,181 @@ final class LgHome {
             return true;
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+        if (newOpen) {   // peek mode: Left/Right page through the titles; Up/Down do nothing
+            if (dir == LgNav.LEFT || dir == LgNav.RIGHT) showNew(newIndex + (dir == LgNav.LEFT ? -1 : 1));
+            return true;
+        }
+        if (reordering) { reorderMove(dir); return true; }
         if (focus.equals("feat") && dir == LgNav.LEFT && slide > 0) { showSlide(slide - 1); return true; }
         if (focus.equals("feat") && dir == LgNav.RIGHT && slide < slides.size() - 1) { showSlide(slide + 1); return true; }
-        setFocus(LgNav.next(focus, dir, apps.size(), chips.size(), QUICK, first));
+        setFocus(LgNav.next(focus, dir, bandCount(), chips.size(), QUICK, first));
         return true;
+    }
+
+    /** Apps in the band plus the reorder circle after them (no circle when there are no apps). */
+    private int bandCount() {
+        return apps.isEmpty() ? 0 : apps.size() + 1;
+    }
+
+    // ---- reordering (fork) ----
+
+    private void startReorder() {
+        reordering = true;
+        moving = -1;
+        setFocus("a0");
+        reorderLook();
+    }
+
+    private void endReorder() {
+        reordering = false;
+        moving = -1;
+        build();   // the feature card and chips follow the new order too
+    }
+
+    /** OK on an app in reorder mode: pick it up, or put it down. */
+    private void toggleMoving(int n) {
+        View v = focusables.get("a" + n);
+        if (moving >= 0) {
+            lift(focusables.get("a" + moving), false);
+            paint(focus, v, true);   // back to plain focused glass
+        }
+        moving = moving == n ? -1 : n;
+        if (moving >= 0) lift(v, true);
+        reorderLook();
+    }
+
+    /**
+     * Reorder mode's look: a white label above the band, a bright band edge, every app but the focused one dimmed,
+     * the circle as a white Done tick, and the carried app solid white with arrows either side. Off: all back.
+     */
+    private void reorderLook() {
+        if (strip == null) return;
+        bandView.setBackground(bandBackground(reordering));
+        reorderChip.setVisibility(reordering ? View.VISIBLE : View.GONE);
+        if (reordering) {
+            reorderChipText.setText(moving >= 0 ? act.getString(R.string.lg_reorder_moving, apps.get(moving).label)
+                    : act.getString(R.string.lg_reorder_on));
+        }
+        for (int i = 0; i < apps.size(); i++) {
+            View v = focusables.get("a" + i);
+            if (v == null) continue;
+            v.setAlpha(!reordering || focus.equals("a" + i) ? 1f : 0.45f);
+            if (i == moving) {
+                v.setBackground(solidCircle());
+                v.setForeground(new Arrows());
+            }
+        }
+        String key = "a" + apps.size();
+        View circle = focusables.get(key);
+        if (circle instanceof ViewGroup && ((ViewGroup) circle).getChildAt(0) instanceof ImageView) {
+            ImageView ic = (ImageView) ((ViewGroup) circle).getChildAt(0);
+            ic.setImageResource(reordering ? R.drawable.ic_lg_check : R.drawable.ic_lg_reorder);
+            if (reordering) {
+                circle.setBackground(solidCircle());
+                ic.setColorFilter(0xFF15171D);
+            } else {
+                ic.clearColorFilter();
+            }
+        }
+    }
+
+    private static GradientDrawable solidCircle() {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColor(0xFFFFFFFF);
+        return d;
+    }
+
+    /** The reorder circle at rest: no fill, a dashed white ring, so it reads as a tool rather than an app. */
+    private GradientDrawable dashedCircle() {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setStroke(Math.max(1, px(1.5f)), 0x8CFFFFFF, px(5), px(4));
+        return d;
+    }
+
+    /** The band's glass; with a bright edge while reorder mode is on. */
+    private Drawable bandBackground(boolean bright) {
+        float r = px(54);
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{GLASS_TOP, GLASS_BOTTOM});
+        g.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r});
+        g.setStroke(bright ? focusEdge() : Math.max(1, px(1)), bright ? FOCUS_GLASS_EDGE : GLASS_EDGE);
+        GradientDrawable base = new GradientDrawable();
+        base.setColor(GLASS_TINT);
+        base.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r});
+        return new LayerDrawable(new Drawable[]{base, g});
+    }
+
+    /** Chevrons just outside the carried app's circle, left and right: it moves with Left and Right. */
+    private final class Arrows extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        Arrows() {
+            paint.setColor(0xFFFFFFFF);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(Math.max(2, px(2)));
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+        }
+
+        @Override public void draw(Canvas c) {
+            Rect b = getBounds();
+            float cy = b.exactCenterY(), h = px(5), w = px(3), gap = px(5);
+            Path p = new Path();
+            float l = b.left - gap - w;
+            p.moveTo(l + w, cy - h);
+            p.lineTo(l, cy);
+            p.lineTo(l + w, cy + h);
+            float r = b.right + gap;
+            p.moveTo(r, cy - h);
+            p.lineTo(r + w, cy);
+            p.lineTo(r, cy + h);
+            c.drawPath(p, paint);   // outside the bounds on purpose: the strip doesn't clip its circles
+        }
+
+        @Override public void setAlpha(int alpha) {
+            paint.setAlpha(alpha);
+        }
+
+        @Override public void setColorFilter(ColorFilter cf) {
+            paint.setColorFilter(cf);
+        }
+
+        @Override public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+    }
+
+    private void lift(View v, boolean up) {
+        if (v == null) return;
+        v.animate().scaleX(up ? 1.26f : 1.14f).scaleY(up ? 1.26f : 1.14f).translationY(up ? -px(10) : 0)
+                .setDuration(ms(180)).start();
+    }
+
+    /** Left/Right in reorder mode: move the carried app one place, or move focus along the band. */
+    private void reorderMove(char dir) {
+        if (dir != LgNav.LEFT && dir != LgNav.RIGHT) return;
+        int n = LgNav.parse(focus);
+        int m = dir == LgNav.LEFT ? n - 1 : n + 1;
+        if (moving < 0) {
+            if (m >= 0 && m < bandCount()) {
+                setFocus("a" + m);
+                reorderLook();
+            }
+            return;
+        }
+        if (m < 0 || m >= apps.size()) return;
+        java.util.Collections.swap(apps, n, m);
+        View carried = strip.getChildAt(n), other = strip.getChildAt(m);
+        strip.removeView(carried);
+        strip.addView(carried, m);
+        register("a" + m, carried, -1);
+        register("a" + n, other, -1);
+        moving = m;
+        focus = "a" + m;
+        scrollBand(m);
+        LgApps.saveOrder(act, apps);
+        reorderLook();
     }
 
     // ---- building ----
@@ -267,11 +478,14 @@ final class LgHome {
             for (LgApps.App a : apps) a.lastOpened = LastOpened.get(act, a.pkg);
         }
         // 8. keep the band's scroll inside the list, which may have shrunk
-        first = Math.max(0, Math.min(first, apps.size() - VISIBLE));
+        first = Math.max(0, Math.min(first, bandCount() - VISIBLE));
+        moving = -1;   // a rebuild drops an app being carried in reorder mode
         pruneArt();
         focusables.clear();
         radii.clear();
         root.removeAllViews();
+        bgLayer = new FrameLayout(act);
+        root.addView(bgLayer, new FrameLayout.LayoutParams(-1, -1));
         background();
         header();
         featureCard();
@@ -284,6 +498,15 @@ final class LgHome {
         String keep = focus;
         focus = "";
         setFocus(keep);
+        if (reordering) reorderLook();
+        if (newOpen) applyNewOpen(false);   // a rebuild (artwork landing, feed refresh) keeps peek mode open
+    }
+
+    /** Swaps only the background (movie art changed), so the cards and the focused item are not rebuilt. */
+    private void refreshBackground() {
+        if (bgLayer == null) { build(); return; }
+        bgLayer.removeAllViews();
+        background();
     }
 
     private void background() {
@@ -292,20 +515,20 @@ final class LgHome {
             ImageView bg = new ImageView(act);
             bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
             bg.setImageBitmap(wallpaper);
-            root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
+            bgLayer.addView(bg, new FrameLayout.LayoutParams(-1, -1));
             View dim = new View(act);
             dim.setBackgroundColor(Color.argb(Math.round(255 * Math.min(90, Math.max(0, cfg.wallpaperDim)) / 100f), 0, 0, 0));
-            root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
+            bgLayer.addView(dim, new FrameLayout.LayoutParams(-1, -1));
         } else {
             View bg = new View(act);
             bg.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF15161D, 0xFF07070A}));
-            root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
+            bgLayer.addView(bg, new FrameLayout.LayoutParams(-1, -1));
         }
     }
 
     /**
      * The movie-art background: the current TMDB backdrop, darkened at least 40% so the glass cards stay readable,
-     * fading in when it changes, with a credit line under the date. False while there is nothing to show yet (no
+     * fading in when it changes; no credit line on Home. False while there is nothing to show yet (no
      * titles, or the first picture still decoding), so the theme's picture stands in.
      */
     private boolean movieArtBackground() {
@@ -320,14 +543,14 @@ final class LgHome {
                 if (b == null) return;
                 artBitmap = b;
                 artKey = key;
-                if (resumed) build();
+                if (resumed) refreshBackground();
             });
         }
         if (artBitmap == null) return false;
         ImageView bg = new ImageView(act);
         bg.setScaleType(ImageView.ScaleType.CENTER_CROP);
         bg.setImageBitmap(artBitmap);
-        root.addView(bg, new FrameLayout.LayoutParams(-1, -1));
+        bgLayer.addView(bg, new FrameLayout.LayoutParams(-1, -1));
         if (!artKey.equals(shownArtKey)) {
             bg.setAlpha(0f);
             bg.animate().alpha(1f).setDuration(ms(1200)).start();
@@ -335,34 +558,22 @@ final class LgHome {
         }
         View dim = new View(act);
         dim.setBackgroundColor(Color.argb(Math.round(255 * Math.min(90, Math.max(40, cfg.wallpaperDim)) / 100f), 0, 0, 0));
-        root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
-        for (Tmdb.Title t : titles) {
-            if (!t.backdrop.equals(artKey)) continue;
-            LgApps.App on = appForProvider(t.provider);
-            String credit = on != null ? act.getString(R.string.lg_backdrop_credit, t.name, on.label)
-                    : act.getString(R.string.lg_backdrop_credit_plain, t.name);
-            place(root, text(credit, 11, R.string.font_regular, 0xA6FFFFFF), 40, 60, 560, -1);
-            break;
-        }
+        bgLayer.addView(dim, new FrameLayout.LayoutParams(-1, -1));
         return true;
     }
 
     private void header() {
-        TextClock time = new TextClock(act);
-        time.setFormat12Hour("h:mm a");
-        time.setFormat24Hour("HH:mm");
-        style(time, 30, R.string.font_light, 0xFFFFFFFF);
-        ClockFormat.apply(time, cfg.clockFormat);
-        place(root, time, 40, 22, -1, -1);
+        // The date only: the time is shown once, on the Art mode card.
         TextClock date = new TextClock(act);
         date.setFormat12Hour("EEEE  d MMMM");
         date.setFormat24Hour("EEEE  d MMMM");
-        style(date, 13, R.string.font_regular, 0x99FFFFFF);
+        style(date, 13, R.string.font_regular, 0xCCFFFFFF);
         date.setAllCaps(true);
         date.setLetterSpacing(0.12f);
-        place(root, date, 190, 36, -1, -1);
-        iconButton("top0", R.drawable.ic_lg_search, 840, 22);
-        iconButton("top1", R.drawable.ic_settings, 890, 22);
+        place(root, date, 40, 36, -1, -1);
+        iconButton("top0", R.drawable.ic_lg_search, 790, 22);
+        iconButton("top1", R.drawable.ic_settings, 840, 22);
+        iconButton("top2", R.drawable.ic_lg_profile, 890, 22);   // fork: Google account / profiles
     }
 
     private void iconButton(String key, int icon, float x, float y) {
@@ -433,7 +644,7 @@ final class LgHome {
         kind.setLetterSpacing(0.16f);
         place(s, kind, 30, 22, 400, -1);
         ImageView logo = new ImageView(act);
-        logo.setImageDrawable(a.art);
+        logo.setImageDrawable(fresh(a.art));
         logo.setScaleType(ImageView.ScaleType.FIT_START);
         place(s, logo, 28, 44, 190, 54);
         String title = continueSlide ? act.getString(R.string.lg_continue_title) : act.getString(R.string.lg_favourite_title);
@@ -447,7 +658,8 @@ final class LgHome {
         ImageView play = new ImageView(act);
         play.setImageResource(R.drawable.ic_lg_play);
         btn.addView(play, new LinearLayout.LayoutParams(px(18), px(18)));
-        TextView label = text(continueSlide ? act.getString(R.string.lg_continue_button) : act.getString(R.string.lg_open_app, a.label), 14, R.string.font_medium, 0xFFFFFFFF);
+        // The button says what it does: it opens the app (it can't resume a title), on every app slide alike.
+        TextView label = text(act.getString(R.string.lg_open_app, a.label), 14, R.string.font_medium, 0xFFFFFFFF);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
         lp.leftMargin = px(8);
         btn.addView(label, lp);
@@ -479,7 +691,7 @@ final class LgHome {
         place(s, kind, 30, 22, 400, -1);
         if (on != null) {
             ImageView logo = new ImageView(act);
-            logo.setImageDrawable(on.art);
+            logo.setImageDrawable(fresh(on.art));
             logo.setScaleType(ImageView.ScaleType.FIT_START);
             place(s, logo, 28, 48, 150, 42);
         }
@@ -503,12 +715,7 @@ final class LgHome {
         bp.rightMargin = px(24);
         bp.bottomMargin = px(20);
         s.addView(btn, bp);
-        TextView credit = text(act.getString(R.string.lg_tmdb_credit), 10, R.string.font_regular, 0x80FFFFFF);
-        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(-2, -2, Gravity.END | Gravity.TOP);
-        cp.rightMargin = px(18);
-        cp.topMargin = px(18);
-        s.addView(credit, cp);
-        return s;
+        return s;   // TMDB is credited once, in Launcher settings, not on every card
     }
 
     private LgApps.App appForProvider(int provider) {
@@ -572,19 +779,22 @@ final class LgHome {
         title.setAllCaps(true);
         title.setLetterSpacing(0.14f);
         place(card, title, 16, 12, -1, -1);
-        int[] icons = {R.drawable.ic_wifi, R.drawable.ic_lg_bluetooth, R.drawable.ic_lg_cast, R.drawable.ic_input, R.drawable.ic_lg_patterns};
-        int[] labels = {R.string.lg_wifi, R.string.lg_bluetooth, R.string.lg_mirror, R.string.lg_input, R.string.lg_patterns};
-        boolean[] on = {networkUp(), bluetoothOn(), false, false, false};
+        // Calibration patterns stay in the Settings panel (Projector).
+        int[] icons = {R.drawable.ic_wifi, R.drawable.ic_lg_bluetooth, R.drawable.ic_lg_brightness, R.drawable.ic_lg_cast, R.drawable.ic_input};
+        int[] labels = {R.string.lg_wifi, R.string.lg_bluetooth, R.string.lg_picture, R.string.lg_cast, R.string.lg_input};
         float gap = (296 - 28 - QUICK * 48) / (float) (QUICK - 1);
         for (int i = 0; i < QUICK; i++) {
             float x = 14 + i * (48 + gap);
             FrameLayout b = new FrameLayout(act);
-            b.setBackground(on[i] ? ring(22, 0x476EC1FF, 0xB36EC1FF) : ring(22, 0x1AFFFFFF, 0x29FFFFFF));
+            b.setBackground(ring(22, 0x1AFFFFFF, 0x29FFFFFF));
             ImageView ic = new ImageView(act);
             ic.setImageResource(icons[i]);
             b.addView(ic, centered(22, 22));
             place(card, b, x + 2, 38, 44, 44);
-            TextView l = text(act.getString(labels[i]), 11, R.string.font_regular, 0xBFFFFFFF);
+            // Wi-Fi and Bluetooth show their state: lit when connected / on, dimmed when off.
+            boolean off = (i == 0 && !networkUp()) || (i == 1 && !bluetoothOn());
+            ic.setAlpha(off ? 0.4f : 1f);
+            TextView l = text(act.getString(labels[i]), 11, R.string.font_regular, off ? 0x73FFFFFF : 0xBFFFFFFF);
             l.setGravity(Gravity.CENTER);
             place(card, l, x - 6, 88, 60, -1);
             quick[i] = b;
@@ -609,9 +819,9 @@ final class LgHome {
         clock.setFormat12Hour("h:mm");
         clock.setFormat24Hour("HH:mm");
         style(clock, 36, R.string.font_light, 0xFFFFFFFF);
+        ClockFormat.apply(clock, cfg.clockFormat);   // Home's only clock, so it follows the Clock setting
         place(card, clock, 20, 14, -1, -1);
         place(card, text(act.getString(R.string.lg_art_mode), 13, R.string.font_regular, 0xBFFFFFFF), 22, 62, 260, -1);
-        place(card, text(act.getString(R.string.lg_ok_to_start), 12, R.string.font_regular, 0x80FFFFFF), 22, 82, 260, -1);
         place(root, card, 624, 200, 296, 112);
         register("clock", card, 16);
     }
@@ -631,7 +841,9 @@ final class LgHome {
         kick.setAllCaps(true);
         kick.setLetterSpacing(0.14f);
         place(card, kick, 16, 14, 220, -1);
-        TextView body = text(act.getString(feed.enabled() ? R.string.lg_new_this_week_loading : R.string.lg_new_this_week_no_key),
+        int msg = !feed.enabled() ? R.string.lg_new_this_week_no_key
+                : networkUp() ? R.string.lg_new_this_week_loading : R.string.lg_new_this_week_offline;
+        TextView body = text(act.getString(msg),
                 17, R.string.font_light, 0xE6FFFFFF);
         body.setSingleLine(false);
         body.setMaxLines(3);
@@ -664,11 +876,10 @@ final class LgHome {
             kick.setAllCaps(true);
             kick.setLetterSpacing(0.14f);
             place(s, kick, 16, 14, 150, -1);
-            place(s, text(act.getString(R.string.lg_tmdb_credit), 9, R.string.font_regular, 0x80FFFFFF), 16, 30, 150, -1);
             LgApps.App on = appForProvider(t.provider);
             if (on != null) {
                 ImageView logo = new ImageView(act);
-                logo.setImageDrawable(on.art);
+                logo.setImageDrawable(fresh(on.art));
                 logo.setScaleType(ImageView.ScaleType.FIT_END);
                 place(s, logo, 176, 6, 62, 35);
             }
@@ -704,6 +915,59 @@ final class LgHome {
         paintNewDots();
     }
 
+    // ---- New this week peek mode (fork) ----
+
+    private void openNew() {
+        newOpen = true;
+        applyNewOpen(true);
+    }
+
+    /**
+     * The card magnified 1.64x, to about 410x321 design units with its bottom-left corner near its own (45, 521), over
+     * the rest of Home, which is lightly blurred (Android 12+) and dimmed. Also re-applied without animation after a
+     * rebuild while open.
+     */
+    private void applyNewOpen(boolean animate) {
+        View card = focusables.get("w1");
+        if (card == null || newViews.isEmpty() || !focus.equals("w1")) { newOpen = false; return; }
+        removeGlow();
+        if (Build.VERSION.SDK_INT >= 31) {
+            float r = px(6);
+            for (int i = 0; i < root.getChildCount(); i++) {
+                View c = root.getChildAt(i);
+                if (c != card) c.setRenderEffect(RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP));
+            }
+        }
+        float z = px(40);
+        newScrim = new View(act);
+        newScrim.setBackgroundColor(0x80000000);
+        newScrim.setTranslationZ(z - px(2));
+        root.addView(newScrim, new FrameLayout.LayoutParams(-1, -1));
+        card.setTranslationZ(z);
+        long d = animate ? ms(300) : 0;
+        // Card 250x196 at (40, 330), scaled about its centre (165, 428): centre moved to (250, 360.5).
+        card.animate().scaleX(1.64f).scaleY(1.64f).translationX(px(85)).translationY(-px(67.5f)).setDuration(d).start();
+        if (animate) {
+            newScrim.setAlpha(0f);
+            newScrim.animate().alpha(1f).setDuration(d).start();
+        }
+    }
+
+    private void closeNew(boolean animate) {
+        if (!newOpen) return;
+        newOpen = false;
+        if (Build.VERSION.SDK_INT >= 31) {
+            for (int i = 0; i < root.getChildCount(); i++) root.getChildAt(i).setRenderEffect(null);
+        }
+        root.removeView(newScrim);
+        newScrim = null;
+        View card = focusables.get("w1");
+        if (card == null) return;
+        card.setTranslationZ(0);
+        card.animate().translationX(0).translationY(0).setDuration(animate ? ms(220) : 0).start();
+        if (focus.equals("w1")) paint("w1", card, true);   // back to the focused size, with its glow
+    }
+
     private void paintNewDots() {
         for (int i = 0; i < newDots.size(); i++) {
             View d = newDots.get(i);
@@ -716,42 +980,77 @@ final class LgHome {
 
     private void appBand() {
         FrameLayout band = new FrameLayout(act);
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{GLASS_TOP, GLASS_BOTTOM});
-        float r = px(54);
-        g.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r});
-        g.setStroke(Math.max(1, px(1)), GLASS_EDGE);
-        band.setBackground(g);
+        band.setBackground(bandBackground(false));
         place(root, band, BAND_X, BAND_Y, BAND_W, BAND_H);
+        bandView = band;
         FrameLayout clip = new FrameLayout(act);
         clip.setClipChildren(true);
-        place(band, clip, 22, 0, BAND_W - 22, BAND_H);
+        place(band, clip, 10, 0, BAND_W - 10, BAND_H);
+        // The strip fills the band's height and is as wide as all its apps, so a focused circle's scale and glow
+        // are not cut to a square and apps past the band's width are still drawn when it scrolls.
         strip = new LinearLayout(act);
         strip.setClipChildren(false);
-        strip.setPadding(px(6), 0, 0, 0);
+        strip.setClipToPadding(false);
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        strip.setPadding(px(18), 0, 0, 0);
         for (int i = 0; i < apps.size(); i++) {
             LgApps.App a = apps.get(i);
             FrameLayout c = new FrameLayout(act);
             c.setBackground(appCircle(false));
             ImageView logo = new ImageView(act);
-            logo.setImageDrawable(a.art);
+            logo.setImageDrawable(fresh(a.glyph));
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            c.addView(logo, centered(SZ * 0.94f, SZ * 0.94f * 0.5625f));
+            c.addView(logo, centered(GLYPH, GLYPH));
             c.setContentDescription(a.label);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(SZ), px(SZ));
             lp.rightMargin = px(STEP - SZ);
             strip.addView(c, lp);
             register("a" + i, c, -1);
         }
-        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-2, px(SZ));
-        sp.topMargin = px((BAND_H - SZ) / 2);
-        clip.addView(strip, sp);
+        // Fork: the reorder circle, always last, as on Google TV. OK starts reorder mode.
+        if (!apps.isEmpty()) {
+            FrameLayout c = new FrameLayout(act);
+            c.setBackground(dashedCircle());
+            ImageView ic = new ImageView(act);
+            ic.setImageResource(R.drawable.ic_lg_reorder);
+            c.addView(ic, centered(30, 30));
+            c.setContentDescription(act.getString(R.string.lg_reorder));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(SZ), px(SZ));
+            lp.rightMargin = px(STEP - SZ);
+            strip.addView(c, lp);
+            register("a" + apps.size(), c, -1);
+        }
+        clip.addView(strip, new FrameLayout.LayoutParams(px(18) + bandCount() * px(STEP), -1));
         strip.setTranslationX(-first * px(STEP));
+        // Fork: the reorder-mode label, a white pill on the band's top edge; hidden until reorder mode starts.
+        LinearLayout chip = new LinearLayout(act);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setBackground(round(0xFFFFFFFF, 11));
+        chip.setPadding(px(10), 0, px(12), 0);
+        ImageView chipIcon = new ImageView(act);
+        chipIcon.setImageResource(R.drawable.ic_lg_reorder);
+        chipIcon.setColorFilter(0xFF15171D);
+        chip.addView(chipIcon, new LinearLayout.LayoutParams(px(13), px(13)));
+        reorderChipText = text("", 11, R.string.font_medium, 0xFF15171D);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-2, -2);
+        tp.leftMargin = px(6);
+        chip.addView(reorderChipText, tp);
+        chip.setVisibility(View.GONE);
+        place(root, chip, BAND_X + 34, BAND_Y - 11, -1, 22);
+        reorderChip = chip;
     }
 
     private void wideWidget() {
         chips.clear();
-        chips.addAll(LgApps.recent(apps, MAX_CHIPS));
-        for (LgApps.App a : apps) if (chips.size() < MAX_CHIPS && !chips.contains(a)) chips.add(a);
+        // Fork: the first chip is the title last seen playing (MediaListener), when its app is still on Home.
+        LastPlayed played = LastPlayed.load(act);
+        LgApps.App playedApp = null;
+        if (played != null) for (LgApps.App a : apps) if (a.pkg.equals(played.pkg)) playedApp = a;
+        if (playedApp != null) chips.add(playedApp);
+        for (LgApps.App a : LgApps.recent(apps, MAX_CHIPS)) if (chips.size() < MAX_CHIPS && !chips.contains(a)) chips.add(a);
+        for (LgApps.App a : apps) {
+            if (chips.size() < MAX_CHIPS && !chips.contains(a) && !LgApps.isSystemSettings(a.pkg)) chips.add(a);
+        }
         chipRow = new FrameLayout(act);
         chipRow.setClipChildren(false);   // room for a focused chip's glow
         place(root, chipRow, 306, 452, 614, 74);
@@ -761,18 +1060,59 @@ final class LgHome {
             FrameLayout chip = new FrameLayout(act);
             chip.setClipToOutline(true);
             chip.setBackground(glass(14, false));
-            View tint = new View(act);
-            tint.setBackgroundColor((a.color & 0x00FFFFFF) | 0x33000000);
-            chip.addView(tint, new FrameLayout.LayoutParams(-1, -1));
-            ImageView logo = new ImageView(act);
-            logo.setImageDrawable(a.art);
-            logo.setScaleType(ImageView.ScaleType.FIT_START);
-            place(chip, logo, 10, 4, 66, 37);
-            String when = a.lastOpened > 0 ? capitalize(LastOpened.describe(act, a.lastOpened)) : a.label;
-            place(chip, text(when, 11, R.string.font_regular, 0xBFFFFFFF), 12, 56, cw - 20, -1);
+            if (i == 0 && playedApp != null) {
+                lastWatchedChip(chip, a, played, cw);
+            } else {
+                View tint = new View(act);
+                tint.setBackgroundColor((a.color & 0x00FFFFFF) | 0x33000000);
+                chip.addView(tint, new FrameLayout.LayoutParams(-1, -1));
+                ImageView logo = new ImageView(act);
+                logo.setImageDrawable(fresh(a.glyph));
+                logo.setScaleType(ImageView.ScaleType.FIT_START);
+                place(chip, logo, 8, 4, 34, 34);
+                // The app's name first (a logo alone isn't always enough), then when it was opened.
+                place(chip, text(a.label, 12, R.string.font_medium, 0xFFFFFFFF), 12, a.lastOpened > 0 ? 41 : 53, cw - 22, -1);
+                if (a.lastOpened > 0) {
+                    place(chip, text(capitalize(LastOpened.describe(act, a.lastOpened)), 10, R.string.font_regular, 0xA6FFFFFF),
+                            12, 57, cw - 22, -1);
+                }
+            }
             place(chipRow, chip, i * (cw + 10), 0, cw, 74);
             register("c" + i, chip, 14);
         }
+    }
+
+    /** The last-watched chip: the title's artwork under a dark fade, its app's logo and the title. OK opens the app. */
+    private void lastWatchedChip(FrameLayout chip, LgApps.App app, LastPlayed played, float cw) {
+        String key = played.pkg + "\n" + played.title + "\n" + LastPlayed.artStamp(act);
+        if (!key.equals(lastWatchedKey)) {
+            lastWatchedKey = key;
+            lastWatchedArt = LastPlayed.art(act);
+        }
+        if (lastWatchedArt != null) {
+            ImageView art = new ImageView(act);
+            art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            art.setImageBitmap(lastWatchedArt);
+            chip.addView(art, new FrameLayout.LayoutParams(-1, -1));
+            View fade = new View(act);
+            fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0x66000000, 0x1A000000, 0xD9000000}));
+            chip.addView(fade, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            View tint = new View(act);
+            tint.setBackgroundColor((app.color & 0x00FFFFFF) | 0x33000000);
+            chip.addView(tint, new FrameLayout.LayoutParams(-1, -1));
+        }
+        ImageView logo = new ImageView(act);
+        logo.setImageDrawable(fresh(app.glyph));
+        logo.setScaleType(ImageView.ScaleType.FIT_START);
+        place(chip, logo, 8, 4, 28, 28);
+        TextView kick = text(act.getString(R.string.lg_last_watched), 8, R.string.font_medium, 0xB3FFFFFF);
+        kick.setAllCaps(true);
+        kick.setLetterSpacing(0.12f);
+        kick.setGravity(Gravity.END);
+        place(chip, kick, cw - 92, 9, 82, -1);
+        place(chip, text(played.title, 12, R.string.font_medium, 0xFFFFFFFF), 12, 53, cw - 22, -1);
     }
 
     // ---- focus ----
@@ -784,13 +1124,14 @@ final class LgHome {
         focus = key;
         View now = focusables.get(key);
         paint(key, now, true);
-        if (key.startsWith("a")) {
-            int n = LgNav.parse(key);
-            int f = LgNav.firstShown(n, apps.size(), VISIBLE);
-            if (f != first) {
-                first = f;
-                strip.animate().translationX(-first * px(STEP)).setDuration(ms(260)).start();
-            }
+        if (key.startsWith("a")) scrollBand(LgNav.parse(key));
+    }
+
+    private void scrollBand(int n) {
+        int f = LgNav.firstShown(n, bandCount(), VISIBLE);
+        if (f != first) {
+            first = f;
+            strip.animate().translationX(-first * px(STEP)).setDuration(ms(260)).start();
         }
     }
 
@@ -803,11 +1144,9 @@ final class LgHome {
         if (!on) {
             v.setForeground(null);
             removeGlow();
-            if (key.startsWith("a")) v.setBackground(appCircle(false));
+            if (key.startsWith("a")) v.setBackground(key.equals("a" + apps.size()) ? dashedCircle() : appCircle(false));
             if (key.startsWith("q")) {
-                int i = LgNav.parse(key);
-                boolean active = i == 0 ? networkUp() : i == 1 && bluetoothOn();
-                v.setBackground(active ? ring(22, 0x476EC1FF, 0xB36EC1FF) : ring(22, 0x1AFFFFFF, 0x29FFFFFF));
+                v.setBackground(ring(22, 0x1AFFFFFF, 0x29FFFFFF));
                 tint(v, 0xFFFFFFFF);
             }
             if (key.startsWith("top")) { v.setBackground(glass(20, true)); tint(v, 0xFFFFFFFF); }
@@ -815,10 +1154,8 @@ final class LgHome {
         }
         // Focus is glass too: brighter frosted glass with a bright edge, lifted by the scale and elevation above.
         if (key.startsWith("q") || key.startsWith("top")) {
-            int i = key.startsWith("q") ? LgNav.parse(key) : -1;
-            boolean active = i == 0 ? networkUp() : i == 1 && bluetoothOn();
             GradientDrawable fill = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    active ? new int[]{0x8C96D2FF, 0x406EC1FF} : new int[]{FOCUS_GLASS_TOP, FOCUS_GLASS_BOTTOM});
+                    new int[]{FOCUS_GLASS_TOP, FOCUS_GLASS_BOTTOM});
             fill.setShape(GradientDrawable.OVAL);
             fill.setStroke(focusEdge(), FOCUS_GLASS_EDGE);
             v.setBackground(fill);
@@ -907,21 +1244,28 @@ final class LgHome {
         }
         if (focus.equals("top0")) { search(null); return; }
         if (focus.equals("top1")) { openSettings(false); return; }
+        if (focus.equals("top2")) { start(SystemSettings.profileIntent(act)); return; }
         if (focus.equals("clock")) { start(new Intent(act, ClockActivity.class)); return; }
         if (focus.equals("w1")) {
+            // First OK opens peek mode; OK there searches for the title shown.
             List<Tmdb.Title> list = feed.newThisWeek();
-            if (!list.isEmpty()) search(list.get(Math.min(newIndex, list.size() - 1)).name);
+            if (list.isEmpty()) return;
+            if (!newOpen) { openNew(); return; }
+            closeNew(false);
+            search(list.get(Math.min(newIndex, list.size() - 1)).name);
             return;
         }
         int n = LgNav.parse(focus);
+        if (focus.startsWith("a") && n == apps.size()) { if (reordering) endReorder(); else startReorder(); return; }
+        if (reordering) { if (focus.startsWith("a")) toggleMoving(n); return; }
         if (focus.startsWith("a") && n < apps.size()) { LgApps.launch(act, apps.get(n)); return; }
         if (focus.startsWith("c") && n < chips.size()) { LgApps.launch(act, chips.get(n)); return; }
         if (focus.startsWith("q")) {
             if (n == 0) start(SystemSettings.intent(act, Settings.ACTION_WIFI_SETTINGS));
-            else if (n == 1) start(SystemSettings.intent(act, Settings.ACTION_BLUETOOTH_SETTINGS));
-            else if (n == 2) start(SystemSettings.intent(act, Settings.ACTION_CAST_SETTINGS));
-            else if (n == 3) openInputs();
-            else start(new Intent(act, CalibrationActivity.class));
+            else if (n == 1) start(SystemSettings.bluetoothIntent(act));
+            else if (n == 2) start(SystemSettings.pictureIntent(act));   // picture, brightness
+            else if (n == 3) start(SystemSettings.castIntent(act));
+            else openInputs();
         }
     }
 
@@ -958,7 +1302,9 @@ final class LgHome {
     private void search(String query) {
         Intent i = new Intent(SearchManager.INTENT_ACTION_GLOBAL_SEARCH);
         if (query != null) i.putExtra(SearchManager.QUERY, query);
-        if (!start(i)) start(new Intent(Intent.ACTION_ASSIST));
+        if (!start(i) && !start(new Intent(Intent.ACTION_ASSIST))) {
+            android.widget.Toast.makeText(act, R.string.lg_search_unavailable, android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 
     private boolean start(Intent i) {
@@ -1049,11 +1395,20 @@ final class LgHome {
         t.setIncludeFontPadding(false);
     }
 
+    /** A glass surface over the background: the dark base (GLASS_TINT) with the light sheen and edge on top. */
     private Drawable glass(float radius, boolean oval) {
+        GradientDrawable base = new GradientDrawable();
+        base.setColor(GLASS_TINT);
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{GLASS_TOP, GLASS_BOTTOM});
-        if (oval) g.setShape(GradientDrawable.OVAL); else g.setCornerRadius(px(radius));
+        if (oval) {
+            base.setShape(GradientDrawable.OVAL);
+            g.setShape(GradientDrawable.OVAL);
+        } else {
+            base.setCornerRadius(px(radius));
+            g.setCornerRadius(px(radius));
+        }
         g.setStroke(Math.max(1, px(1)), GLASS_EDGE);
-        return g;
+        return new LayerDrawable(new Drawable[]{base, g});
     }
 
     private Drawable ring(float radius, int fill, int edge) {
@@ -1069,6 +1424,12 @@ final class LgHome {
         g.setColor(color);
         g.setCornerRadius(px(radius));
         return g;
+    }
+
+    /** Its own copy of a drawable: one shared between views of different sizes would be drawn at the last size. */
+    private Drawable fresh(Drawable d) {
+        Drawable.ConstantState cs = d == null ? null : d.getConstantState();
+        return cs != null ? cs.newDrawable(act.getResources()) : d;
     }
 
     private static String capitalize(String s) {

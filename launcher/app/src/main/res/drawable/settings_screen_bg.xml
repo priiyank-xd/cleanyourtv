@@ -1,6 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fork: a deep night-blue wash behind Launcher settings, so its glass rows read like Home's. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <gradient android:type="radial" android:centerX="0.75" android:centerY="0.15" android:gradientRadius="1400"
-        android:startColor="#FF2A3A55" android:centerColor="#FF141B29" android:endColor="#FF07090E" />
-</shape>
+<!-- Fork: the floating glass sheet behind Launcher settings and its dialogs, as the Settings panel's: a dark tint
+     so text stays readable over Home and the panel under it (90% opaque; the Settings panel itself is 60%, SettingsHubActivity.SHEET_TINT), a light
+     sheen on top and a thin bright edge. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#E610141E" />
+            <corners android:radius="26dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="315" android:startColor="#2EFFFFFF" android:centerColor="#0FFFFFFF"
+                android:endColor="#08FFFFFF" />
+            <corners android:radius="26dp" />
+            <stroke android:width="1dp" android:color="#3DFFFFFF" />
+        </shape>
+    </item>
+</layer-list>

@@ -1,7 +1,6 @@
 package com.gathin.tvhome;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -58,6 +57,19 @@ public final class LauncherSettingsActivity extends Activity {
         super.onCreate(state);
         setContentView(R.layout.activity_launcher_settings);
         addFocusGlow(findViewById(android.R.id.content));
+        // Fork: the Settings panel's look. The sheet clips its scrolling rows to its rounded edge (addFocusGlow turned
+        // child clipping off for the glow), text is in the panel's font and each row gets the panel's round icon.
+        findViewById(R.id.settingsPanel).setClipToOutline(true);
+        applyFonts(findViewById(android.R.id.content));
+        rowIcon(R.id.reorderChoice, R.drawable.ic_swap_vert);
+        rowIcon(R.id.wallpaperChoice, R.drawable.ic_picture);
+        rowIcon(R.id.screensaverChoice, R.drawable.ic_hub_display);
+        rowIcon(R.id.openOnStartChoice, R.drawable.ic_lg_play);
+        rowIcon(R.id.animationsChoice, R.drawable.ic_hub_tune);
+        rowIcon(R.id.advancedChoice, R.drawable.ic_hub_more);
+        rowIcon(R.id.defaultHomeChoice, R.drawable.ic_home_settings);
+        rowIcon(R.id.tvSettingsChoice, R.drawable.ic_settings);
+        rowIcon(R.id.followThemeChoice, R.drawable.ic_hub_undo);
         choices = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
         Config config = Config.load(this);
         View reorderChoice = findViewById(R.id.reorderChoice);
@@ -149,12 +161,10 @@ public final class LauncherSettingsActivity extends Activity {
             if (advancedEffects) {
                 setAdvanced(false);
             } else {
-                new AlertDialog.Builder(this)
-                        .setTitle(R.string.advanced_effects)
-                        .setMessage(R.string.advanced_effects_warning)
-                        .setPositiveButton(R.string.enable, (dialog, which) -> setAdvanced(true))
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .show();
+                glassDialog(getString(R.string.advanced_effects), getString(R.string.advanced_effects_warning),
+                        null, -1, null,
+                        new String[]{getString(android.R.string.cancel), getString(R.string.enable)},
+                        new Runnable[]{null, () -> setAdvanced(true)});
             }
         });
         openOnStartChoice = findViewById(R.id.openOnStartChoice);
@@ -163,8 +173,11 @@ public final class LauncherSettingsActivity extends Activity {
             openOnStartChoice.setOnClickListener(v -> showOpenOnStartPicker());
         }
         lgBackground = Config.lgBackground(this);
-        findViewById(R.id.lgBackgroundGroup).setVisibility(
-                Config.HOME_LG.equals(Config.homeLayout(this)) ? View.VISIBLE : View.GONE);
+        boolean lgHome = Config.HOME_LG.equals(Config.homeLayout(this));
+        findViewById(R.id.lgBackgroundGroup).setVisibility(lgHome ? View.VISIBLE : View.GONE);
+        // Fork: the grid layout, dock band and advanced effects only change the classic grid home.
+        findViewById(R.id.classicGridGroup).setVisibility(lgHome ? View.GONE : View.VISIBLE);
+        findViewById(R.id.advancedGroup).setVisibility(lgHome ? View.GONE : View.VISIBLE);
         int[] lgBackgroundIds = {R.id.lgBgPicture, R.id.lgBgMovieArt};
         for (int i = 0; i < lgBackgroundIds.length; i++) {
             final String value = LG_BACKGROUNDS[i];
@@ -201,6 +214,7 @@ public final class LauncherSettingsActivity extends Activity {
                 open(SystemSettings.intent(this, Settings.ACTION_SETTINGS)));
         refresh();
         if (config.launcherSettingsButton) reorderChoice.requestFocus();
+        else if (lgHome) lgBackgroundChoices[Config.LG_MOVIE_ART.equals(lgBackground) ? 1 : 0].requestFocus();
         else columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
     }
 
@@ -223,10 +237,7 @@ public final class LauncherSettingsActivity extends Activity {
         String current = choices.getString(Config.WALLPAPER_CHOICE_KEY, null);
         int checked = "none".equals(current) ? images.size()
                 : indexOf(images, current);
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.wallpaper_label)
-                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
-                    dialog.dismiss();
+        glassDialog(getString(R.string.wallpaper_label), null, labels, checked, which -> {
                     if (which == images.size()) {
                         choices.edit().putString(Config.WALLPAPER_CHOICE_KEY, "none").apply();
                     } else {
@@ -236,14 +247,13 @@ public final class LauncherSettingsActivity extends Activity {
                     changed();
                     Toast.makeText(this, R.string.wallpaper_applied, Toast.LENGTH_SHORT).show();
                     refresh();
-                })
-                .setNeutralButton(R.string.wallpaper_theme_default, (dialog, which) -> {
+                },
+                new String[]{getString(android.R.string.cancel), getString(R.string.wallpaper_theme_default)},
+                new Runnable[]{null, () -> {
                     choices.edit().remove(Config.WALLPAPER_CHOICE_KEY).apply();
                     changed();
                     refresh();
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                }});
     }
 
     /** Off, then every app with a TV entry point by name. Saved at once; it is read on the next boot. */
@@ -267,19 +277,14 @@ public final class LauncherSettingsActivity extends Activity {
             labels[i + 1] = apps.get(i)[0];
             if (apps.get(i)[1].equals(current)) checked = i + 1;
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.open_on_start_label)
-                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
-                    dialog.dismiss();
+        glassDialog(getString(R.string.open_on_start_label), null, labels, checked, which -> {
                     if (which == 0) choices.edit().remove(OpenOnStart.KEY).apply();
                     else {
                         OpenOnStart.skipThisBoot(this);
                         choices.edit().putString(OpenOnStart.KEY, apps.get(which - 1)[1]).apply();
                     }
                     refresh();
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                }, new String[]{getString(android.R.string.cancel)}, new Runnable[]{null});
     }
 
     /** Every installed screensaver; ours is named "Photos and clock". Needs WRITE_SECURE_SETTINGS (pm grant). */
@@ -317,10 +322,7 @@ public final class LauncherSettingsActivity extends Activity {
             labels[i] = screensaverName(dreams.get(i));
             if (flat(dreams.get(i)).equals(current)) checked = i;
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.screensaver_label)
-                .setSingleChoiceItems(labels, checked, (dialog, which) -> {
-                    dialog.dismiss();
+        glassDialog(getString(R.string.screensaver_label), null, labels, checked, which -> {
                     try {
                         Settings.Secure.putString(getContentResolver(), SCREENSAVER_COMPONENTS, flat(dreams.get(which)));
                         Settings.Secure.putInt(getContentResolver(), "screensaver_enabled", 1);
@@ -328,9 +330,111 @@ public final class LauncherSettingsActivity extends Activity {
                         Toast.makeText(this, R.string.screensaver_needs_permission, Toast.LENGTH_LONG).show();
                     }
                     refresh();
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                }, new String[]{getString(android.R.string.cancel)}, new Runnable[]{null});
+    }
+
+    /**
+     * Fork: a picker or confirmation in the page's own glass look, in place of the system AlertDialog. {@code items}
+     * (may be null) are rows, the {@code checked} one a white pill and focused first; picking one closes the dialog.
+     * {@code buttons} sit along the bottom; a null action only closes. Back closes it too.
+     */
+    private void glassDialog(String title, String message, String[] items, int checked,
+                             java.util.function.IntConsumer onItem, String[] buttons, Runnable[] actions) {
+        float dp = getResources().getDisplayMetrics().density;
+        android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout sheet = new LinearLayout(this);
+        sheet.setOrientation(LinearLayout.VERTICAL);
+        sheet.setBackgroundResource(R.drawable.settings_screen_bg);
+        sheet.setClipToOutline(true);
+        int pad = Math.round(28 * dp);
+        sheet.setPadding(pad, Math.round(24 * dp), pad, Math.round(24 * dp));
+
+        TextView head = new TextView(this);
+        head.setTag("medium");
+        head.setText(title);
+        head.setTextColor(0xFFFFFFFF);
+        head.setTextSize(22);
+        sheet.addView(head);
+        if (message != null) {
+            TextView body = new TextView(this);
+            body.setText(message);
+            body.setTextColor(0x8CFFFFFF);
+            body.setTextSize(14);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.topMargin = Math.round(10 * dp);
+            sheet.addView(body, lp);
+        }
+
+        View first = null;
+        if (items != null) {
+            android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+            scroll.setVerticalScrollBarEnabled(false);
+            LinearLayout list = new LinearLayout(this);
+            list.setOrientation(LinearLayout.VERTICAL);
+            int side = Math.round(6 * dp);
+            list.setPadding(side, side, side, side);   // room for the focused row's glow
+            for (int i = 0; i < items.length; i++) {
+                final int which = i;
+                TextView row = new TextView(this, null, 0, R.style.SettingsRow);
+                row.setText(items[i]);
+                row.setSingleLine(true);
+                row.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                row.setSelected(i == checked);
+                row.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    onItem.accept(which);
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, Math.round(52 * dp));
+                lp.topMargin = Math.round(10 * dp);
+                list.addView(row, lp);
+                if (first == null || i == checked) first = row;
+            }
+            scroll.addView(list);
+            // Every row fits up to about half the screen; a longer list (open on start's apps) scrolls.
+            int listHeight = Math.min(Math.round((62 * items.length + 12) * dp),
+                    Math.round(getResources().getDisplayMetrics().heightPixels * 0.55f));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, listHeight);
+            lp.topMargin = Math.round(8 * dp);
+            sheet.addView(scroll, lp);
+        }
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(android.view.Gravity.END);
+        bar.setPadding(Math.round(6 * dp), 0, Math.round(6 * dp), Math.round(6 * dp));
+        for (int i = 0; i < buttons.length; i++) {
+            final Runnable action = actions[i];
+            TextView b = new TextView(this, null, 0, R.style.SettingsRow);
+            b.setText(buttons[i]);
+            b.setGravity(android.view.Gravity.CENTER);
+            b.setPadding(Math.round(24 * dp), 0, Math.round(24 * dp), 0);
+            b.setOnClickListener(v -> {
+                dialog.dismiss();
+                if (action != null) action.run();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, Math.round(48 * dp));
+            lp.setMarginStart(Math.round(10 * dp));
+            bar.addView(b, lp);
+            if (first == null && action != null) first = b;   // a confirmation focuses its action
+        }
+        if (first == null && bar.getChildCount() > 0) first = bar.getChildAt(0);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(-1, -2);
+        barLp.topMargin = Math.round(20 * dp);
+        sheet.addView(bar, barLp);
+
+        addFocusGlow(sheet);
+        sheet.setClipChildren(true);   // keep scrolled rows inside the rounded sheet
+        applyFonts(sheet);
+        dialog.setContentView(sheet);
+        android.view.Window w = dialog.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0));
+            w.setDimAmount(0.5f);
+            w.setLayout(Math.round(560 * dp), android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        if (first != null) first.requestFocus();
+        dialog.show();
     }
 
     private String screensaverLabel() {
@@ -340,7 +444,13 @@ public final class LauncherSettingsActivity extends Activity {
         for (ResolveInfo r : screensavers()) {
             if (flat(r).equals(cn.flattenToString())) return screensaverName(r);
         }
-        return cn.getPackageName();
+        // Not in the list (Google TV's own ambient mode isn't): its app's name, never a package name on screen.
+        try {
+            PackageManager pm = getPackageManager();
+            return pm.getApplicationLabel(pm.getApplicationInfo(cn.getPackageName(), 0)).toString();
+        } catch (PackageManager.NameNotFoundException e) {
+            return getString(R.string.screensaver_system_default);   // a firmware default that isn't installed here
+        }
     }
 
     /** The picked app's name, its package when it is gone, or Off. */
@@ -383,6 +493,34 @@ public final class LauncherSettingsActivity extends Activity {
             glow.addState(new int[]{android.R.attr.state_focused}, new GlowDrawable(14 * dp, 12 * dp, 0, 0x4DFFFFFF));
             v.setForeground(glow);
         }
+    }
+
+    /** Fork: Outfit, as in the Settings panel; views tagged "medium" (title, section and group labels) get its medium. */
+    private void applyFonts(View v) {
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) applyFonts(g.getChildAt(i));
+        } else if (v instanceof TextView) {
+            ((TextView) v).setTypeface(UiFont.get(this, "medium".equals(v.getTag())
+                    ? R.string.font_medium : R.string.font_regular));
+        }
+    }
+
+    /** Fork: the Settings panel's round glass icon at the start of a row. */
+    private void rowIcon(int rowId, int iconRes) {
+        float dp = getResources().getDisplayMetrics().density;
+        int size = Math.round(30 * dp), inset = Math.round(7 * dp);
+        android.graphics.drawable.GradientDrawable circle = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x33FFFFFF, 0x0FFFFFFF});
+        circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        circle.setStroke(Math.max(1, Math.round(dp)), 0x3DFFFFFF);
+        android.graphics.drawable.Drawable icon = getDrawable(iconRes).mutate();
+        icon.setTintList(getColorStateList(R.color.settings_choice_text));   // dark on a chosen (white) row
+        android.graphics.drawable.LayerDrawable d =
+                new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{circle, icon});
+        d.setLayerInset(1, inset, inset, inset, inset);
+        d.setBounds(0, 0, size, size);
+        ((TextView) findViewById(rowId)).setCompoundDrawablesRelative(d, null, null, null);
     }
 
     private void changed() {

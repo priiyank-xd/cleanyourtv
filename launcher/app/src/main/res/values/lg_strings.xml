@@ -6,42 +6,49 @@
     <string name="lg_continue_title" translatable="false">Pick up where you left off</string>
     <string name="lg_favourite_title" translatable="false">Your favourite, one press away</string>
     <string name="lg_last_opened" translatable="false">Last opened %1$s</string>
-    <string name="lg_continue_button" translatable="false">Continue</string>
     <string name="lg_open_app" translatable="false">Open %1$s</string>
     <string name="lg_quick_settings" translatable="false">Quick settings</string>
     <string name="lg_wifi" translatable="false">Wi-Fi</string>
     <string name="lg_bluetooth" translatable="false">Bluetooth</string>
-    <string name="lg_mirror" translatable="false">Mirror</string>
+    <string name="lg_cast" translatable="false">Cast</string>
+    <string name="lg_last_watched" translatable="false">Last watched</string>
     <string name="lg_input" translatable="false">Input</string>
-    <string name="lg_patterns" translatable="false">Patterns</string>
+    <string name="lg_picture" translatable="false">Picture</string>
+    <string name="lg_profile" translatable="false">Profile</string>
+    <string name="lg_reorder" translatable="false">Reorder apps</string>
+    <string name="lg_reorder_on" translatable="false">Reordering apps \u00b7 Back when done</string>
+    <string name="lg_reorder_moving" translatable="false">Moving %1$s \u00b7 OK to drop</string>
     <string name="lg_art_mode" translatable="false">Art mode</string>
-    <string name="lg_ok_to_start" translatable="false">OK to start</string>
     <string name="lg_new_this_week" translatable="false">New this week</string>
     <string name="lg_new_this_week_loading" translatable="false">Loading new titles on your apps</string>
     <string name="lg_new_this_week_no_key" translatable="false">Add a TMDB key to see new titles</string>
+    <string name="lg_new_this_week_offline" translatable="false">Connect to the internet to see what\'s new</string>
     <string name="lg_trending_rank" translatable="false">Trending now \u00b7 #%1$d</string>
     <string name="lg_movie" translatable="false">Movie</string>
     <string name="lg_series" translatable="false">Series</string>
     <string name="lg_on_app" translatable="false">on %1$s</string>
     <string name="lg_find_it" translatable="false">Find it</string>
-    <string name="lg_tmdb_credit" translatable="false">Data: TMDB</string>
+    <string name="lg_search_unavailable" translatable="false">Search isn\'t available on this TV</string>
     <string name="lg_background_label" translatable="false">Home background</string>
     <string name="lg_background_picture" translatable="false">Picture</string>
     <string name="lg_background_movie_art" translatable="false">Movie art</string>
     <string name="hub_title" translatable="false">Settings</string>
-    <string name="hub_subtitle" translatable="false">Launcher choices and shortcuts into Google TV</string>
-    <string name="hub_on_home" translatable="false">On Home</string>
+    <string name="hub_on_home" translatable="false">Home</string>
     <string name="hub_projector" translatable="false">Projector</string>
-    <string name="hub_more" translatable="false">More</string>
+    <string name="hub_google_tv" translatable="false">Google TV</string>
+    <string name="hub_launcher_section" translatable="false">Launcher</string>
+    <!-- Section headers on the full Launcher settings page. -->
+    <string name="settings_section_home" translatable="false">Home screen</string>
+    <string name="settings_section_start" translatable="false">Screensaver and start-up</string>
+    <string name="settings_section_motion" translatable="false">Motion</string>
+    <string name="settings_section_system" translatable="false">System</string>
+    <string name="settings_section_reset" translatable="false">Reset</string>
     <string name="hub_art_every" translatable="false">Movie art changes</string>
     <string name="hub_minutes" translatable="false">%1$d min</string>
     <string name="hub_clock" translatable="false">Clock</string>
     <string name="hub_button_opens" translatable="false">Settings button opens</string>
     <string name="hub_button_menu" translatable="false">This menu</string>
     <string name="hub_button_google" translatable="false">Google TV</string>
-    <string name="hub_follow_theme" translatable="false">Follow theme</string>
-    <string name="hub_follow_theme_sub" translatable="false">Clear background, movie art timing and clock</string>
-    <string name="hub_follow_theme_done" translatable="false">Back to the theme\'s choices</string>
     <string name="hub_wifi" translatable="false">Wi-Fi and network</string>
     <string name="hub_wifi_sub" translatable="false">Google TV \u00b7 Network and Internet</string>
     <string name="hub_bluetooth" translatable="false">Bluetooth and remotes</string>
@@ -54,19 +61,18 @@
     <string name="hub_launcher" translatable="false">Launcher settings</string>
     <string name="hub_launcher_sub" translatable="false">Everything else this launcher can change</string>
     <string name="hub_apps" translatable="false">Apps</string>
-    <string name="hub_apps_sub" translatable="false">Google TV \u00b7 Storage, permissions</string>
+    <string name="hub_apps_sub" translatable="false">Storage, permissions</string>
     <string name="hub_date" translatable="false">Date and time</string>
-    <string name="hub_date_sub" translatable="false">Google TV \u00b7 Time zone, format</string>
+    <string name="hub_date_sub" translatable="false">Time zone, format</string>
     <string name="hub_accessibility" translatable="false">Accessibility</string>
-    <string name="hub_accessibility_sub" translatable="false">Google TV \u00b7 Mute gesture helper</string>
+    <string name="hub_accessibility_sub" translatable="false">Captions, text, remote key helpers</string>
     <string name="hub_all" translatable="false">All settings</string>
     <string name="hub_all_sub" translatable="false">The full Google TV settings</string>
     <string name="hub_not_available" translatable="false">Not available on this projector</string>
-    <string name="lg_backdrop_credit" translatable="false">Backdrop: %1$s \u00b7 %2$s \u00b7 TMDB</string>
-    <string name="lg_backdrop_credit_plain" translatable="false">Backdrop: %1$s \u00b7 TMDB</string>
     <string name="screensaver_state" translatable="false">Screensaver: %1$s</string>
     <string name="screensaver_label" translatable="false">Screensaver</string>
     <string name="screensaver_photos_clock" translatable="false">Photos and clock</string>
+    <string name="screensaver_system_default" translatable="false">Google TV default</string>
     <string name="screensaver_needs_permission" translatable="false">Grant WRITE_SECURE_SETTINGS over ADB first</string>
     <string name="lg_tmdb_notice" translatable="false">New this week and Trending come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
 </resources>

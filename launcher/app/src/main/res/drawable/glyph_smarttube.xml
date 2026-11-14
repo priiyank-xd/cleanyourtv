@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fork: minimal glyph for the LG-style home's app band (generated, 48x48 grid). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <path android:pathData="M14.5,13.5 H33.5 A6,6 0 0 1 39.5,19.5 V28.5 A6,6 0 0 1 33.5,34.5 H14.5 A6,6 0 0 1 8.5,28.5 V19.5 A6,6 0 0 1 14.5,13.5 Z"
+        android:strokeColor="#FFFF3D3D"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path android:pathData="M21,19 L30,24 L21,29 Z"
+        android:fillColor="#FFFF3D3D" />
+</vector>

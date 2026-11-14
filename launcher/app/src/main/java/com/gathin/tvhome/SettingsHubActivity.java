@@ -36,6 +36,8 @@ public class SettingsHubActivity extends Activity {
     /** Liquid glass, as on Home: a light top-to-bottom gradient with a thin bright edge. */
     private static final int GLASS_TOP = 0x33FFFFFF, GLASS_BOTTOM = 0x0FFFFFFF, GLASS_EDGE = 0x3DFFFFFF;
     private static final String[] CLOCK_FORMATS = {"system", "12", "24"};
+    /** The sheet's dark base, 60% opaque (Launcher settings and its dialogs, settings_screen_bg, stay at 90%). */
+    private static final int SHEET_TINT = 0x9910141E;
 
     private float u;
     private SharedPreferences choices;
@@ -49,14 +51,15 @@ public class SettingsHubActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         View dim = new View(this);
-        dim.setBackgroundColor(0x40000000);
+        dim.setBackgroundColor(0x99000000);   // as Launcher settings: Home steps back while the panel is open
         root.addView(dim, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout pane = new LinearLayout(this);
         pane.setOrientation(LinearLayout.VERTICAL);
-        // A floating glass panel: a dark tint so text stays readable over bright movie art, the glass on top.
+        // A floating glass panel over the dimmed Home: more opaque than Home's cards (60% vs 40%) so its text
+        // stays readable over them.
         GradientDrawable tint = new GradientDrawable();
-        tint.setColor(0x8C10141E);
+        tint.setColor(SHEET_TINT);
         tint.setCornerRadius(px(26));
         GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 new int[]{0x2EFFFFFF, 0x0FFFFFFF, 0x08FFFFFF});
@@ -70,15 +73,14 @@ public class SettingsHubActivity extends Activity {
 
         TextView title = text(getString(R.string.hub_title), 22, R.string.font_medium, ROW_TEXT);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
-        titleLp.setMargins(px(28), px(26), px(28), 0);
+        titleLp.setMargins(px(28), px(26), px(28), px(8));   // no subtitle: the section headers say what's here
         pane.addView(title, titleLp);
-        TextView sub = text(getString(R.string.hub_subtitle), 12, R.string.font_regular, ROW_SUB);
-        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2);
-        subLp.setMargins(px(28), px(6), px(28), px(8));
-        pane.addView(sub, subLp);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
+        // A soft edge, which also keeps the focused row clear of the panel's top and bottom when it scrolls.
+        scroll.setVerticalFadingEdgeEnabled(true);
+        scroll.setFadingEdgeLength(px(28));
         scroll.setClipToPadding(false);
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -86,6 +88,19 @@ public class SettingsHubActivity extends Activity {
         list.setClipChildren(false);   // room for the focused row's glow
         scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
         pane.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        // The picture and sound controls used most on a projector, then its connections. They come first: they are
+        // what the menu is opened for day to day, where Home's look is set once.
+        section(list, R.string.hub_projector);
+        actionRow(list, R.drawable.ic_input, R.string.lg_input, R.string.hub_inputs_sub,
+                v -> open(LgHome.inputsIntent(this)));
+        actionRow(list, R.drawable.ic_hub_display, R.string.hub_display, R.string.hub_display_sub,
+                v -> open(SystemSettings.displaySoundIntent(this)));
+        actionRow(list, R.drawable.ic_lg_patterns, R.string.hub_patterns, R.string.hub_patterns_sub,
+                v -> open(new Intent(this, CalibrationActivity.class)));
+        settingsRow(list, R.drawable.ic_wifi, R.string.hub_wifi, R.string.hub_wifi_sub, Settings.ACTION_WIFI_SETTINGS);
+        actionRow(list, R.drawable.ic_lg_bluetooth, R.string.hub_bluetooth, R.string.hub_bluetooth_sub,
+                v -> open(SystemSettings.bluetoothIntent(this)));
 
         section(list, R.string.hub_on_home);
         choiceRow(list, R.drawable.ic_picture, R.string.lg_background_label,
@@ -103,34 +118,22 @@ public class SettingsHubActivity extends Activity {
                         getString(R.string.clock_format_24)},
                 () -> indexOf(CLOCK_FORMATS, Config.load(this).clockFormat),
                 i -> save(Config.CLOCK_FORMAT_KEY, CLOCK_FORMATS[i]), null);
-        choiceRow(list, R.drawable.ic_settings, R.string.hub_button_opens,
-                new String[]{getString(R.string.hub_button_menu), getString(R.string.hub_button_google)},
-                () -> HubChoices.BUTTON_SYSTEM.equals(Config.lgSettingsButton(this)) ? 1 : 0,
-                i -> save(Config.LG_SETTINGS_BUTTON_KEY, i == 1 ? HubChoices.BUTTON_SYSTEM : HubChoices.BUTTON_HUB), null);
-        actionRow(list, R.drawable.ic_hub_undo, R.string.hub_follow_theme, R.string.hub_follow_theme_sub, v -> {
-            choices.edit().remove(Config.LG_BACKGROUND_KEY).remove(Config.LG_ART_MINUTES_KEY)
-                    .remove(Config.CLOCK_FORMAT_KEY).apply();
-            changed();
-            Toast.makeText(this, R.string.hub_follow_theme_done, Toast.LENGTH_SHORT).show();
-        });
 
-        section(list, R.string.hub_projector);
-        settingsRow(list, R.drawable.ic_wifi, R.string.hub_wifi, R.string.hub_wifi_sub, Settings.ACTION_WIFI_SETTINGS);
-        settingsRow(list, R.drawable.ic_lg_bluetooth, R.string.hub_bluetooth, R.string.hub_bluetooth_sub, Settings.ACTION_BLUETOOTH_SETTINGS);
-        settingsRow(list, R.drawable.ic_hub_display, R.string.hub_display, R.string.hub_display_sub, Settings.ACTION_DISPLAY_SETTINGS);
-        actionRow(list, R.drawable.ic_input, R.string.lg_input, R.string.hub_inputs_sub,
-                v -> open(LgHome.inputsIntent(this)));
-
-        section(list, R.string.hub_more);
-        actionRow(list, R.drawable.ic_lg_patterns, R.string.hub_patterns, R.string.hub_patterns_sub,
-                v -> open(new Intent(this, CalibrationActivity.class)));
-        actionRow(list, R.drawable.ic_hub_tune, R.string.hub_launcher, R.string.hub_launcher_sub,
-                v -> open(new Intent(this, LauncherSettingsActivity.class)));
+        section(list, R.string.hub_google_tv);
         settingsRow(list, R.drawable.ic_apps, R.string.hub_apps, R.string.hub_apps_sub, Settings.ACTION_APPLICATION_SETTINGS);
         settingsRow(list, R.drawable.ic_hub_date, R.string.hub_date, R.string.hub_date_sub, Settings.ACTION_DATE_SETTINGS);
         settingsRow(list, R.drawable.ic_hub_access, R.string.hub_accessibility, R.string.hub_accessibility_sub,
                 Settings.ACTION_ACCESSIBILITY_SETTINGS);
         settingsRow(list, R.drawable.ic_hub_more, R.string.hub_all, R.string.hub_all_sub, Settings.ACTION_SETTINGS);
+
+        // The launcher's own setup, set once. Its reset lives in Launcher settings only (Follow theme).
+        section(list, R.string.hub_launcher_section);
+        actionRow(list, R.drawable.ic_hub_tune, R.string.hub_launcher, R.string.hub_launcher_sub,
+                v -> open(new Intent(this, LauncherSettingsActivity.class)));
+        choiceRow(list, R.drawable.ic_settings, R.string.hub_button_opens,
+                new String[]{getString(R.string.hub_button_menu), getString(R.string.hub_button_google)},
+                () -> HubChoices.BUTTON_SYSTEM.equals(Config.lgSettingsButton(this)) ? 1 : 0,
+                i -> save(Config.LG_SETTINGS_BUTTON_KEY, i == 1 ? HubChoices.BUTTON_SYSTEM : HubChoices.BUTTON_HUB), null);
 
         setContentView(root);
         refresh();

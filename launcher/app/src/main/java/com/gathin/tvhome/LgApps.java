@@ -6,9 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
-import android.util.DisplayMetrics;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,14 +24,17 @@ final class LgApps {
         final String label;
         final ComponentName component;
         final Drawable art;
+        /** Fork: the app's minimal glyph (Glyphs), the same size for every app, for the band and the chips. */
+        final Drawable glyph;
         final int color;
         long lastOpened;
 
-        App(String pkg, String label, ComponentName component, Drawable art, int color) {
+        App(String pkg, String label, ComponentName component, Drawable art, Drawable glyph, int color) {
             this.pkg = pkg;
             this.label = label;
             this.component = component;
             this.art = art;
+            this.glyph = glyph;
             this.color = color;
         }
     }
@@ -52,19 +53,42 @@ final class LgApps {
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(ctx.getPackageName()) || hidden.contains(pkg) || !seen.add(pkg)) continue;
             String label = cfg.appLabels.containsKey(pkg) ? cfg.appLabels.get(pkg) : String.valueOf(ri.loadLabel(pm));
-            Drawable art = artwork(ctx, pm, ri, cfg.appBanners);
-            apps.add(new App(pkg, label, new ComponentName(pkg, ri.activityInfo.name), art, AppAdapter.vividColor(art)));
+            Drawable glyph = Glyphs.get(ctx, pkg, label);
+            // A bundled wordmark where there is one (feature card, provider logos); otherwise the glyph, never the
+            // app's own banner or icon with its square background.
+            Drawable banner = bundledBanner(ctx, ri, cfg.appBanners);
+            Drawable art = banner != null ? banner : glyph;
+            apps.add(new App(pkg, label, new ComponentName(pkg, ri.activityInfo.name), art, glyph, AppAdapter.vividColor(glyph)));
         }
         for (App a : apps) a.lastOpened = LastOpened.get(ctx, a.pkg);
-        Collections.sort(apps, order(cfg.dockApps));
+        Collections.sort(apps, order(savedOrder(ctx), cfg.dockApps));
         return apps;
     }
 
-    /** Dock apps first in their configured order, then the rest by name. */
-    static Comparator<App> order(List<String> dock) {
-        return (a, b) -> compare(dock, a.pkg, a.label, b.pkg, b.label);
+    /** Fork: the band order the person set with the reorder circle; apps not in it follow, in dock/name order. */
+    static Comparator<App> order(List<String> saved, List<String> dock) {
+        return (a, b) -> {
+            int ia = saved.indexOf(a.pkg), ib = saved.indexOf(b.pkg);
+            if (ia >= 0 && ib >= 0) return Integer.compare(ia, ib);
+            if (ia >= 0 || ib >= 0) return ia >= 0 ? -1 : 1;
+            return compare(dock, a.pkg, a.label, b.pkg, b.label);
+        };
     }
 
+    private static final String ORDER_PREFS = "lg_app_order", ORDER_KEY = "order";
+
+    static List<String> savedOrder(Context ctx) {
+        String s = ctx.getSharedPreferences(ORDER_PREFS, Context.MODE_PRIVATE).getString(ORDER_KEY, "");
+        return s.isEmpty() ? new ArrayList<>() : java.util.Arrays.asList(s.split(","));
+    }
+
+    static void saveOrder(Context ctx, List<App> apps) {
+        StringBuilder sb = new StringBuilder();
+        for (App a : apps) sb.append(sb.length() > 0 ? "," : "").append(a.pkg);
+        ctx.getSharedPreferences(ORDER_PREFS, Context.MODE_PRIVATE).edit().putString(ORDER_KEY, sb.toString()).apply();
+    }
+
+    /** Dock apps first in their configured order, then the rest by name. */
     static int compare(List<String> dock, String pa, String la, String pb, String lb) {
         int ia = dock.indexOf(pa), ib = dock.indexOf(pb);
         if (ia >= 0 || ib >= 0) {
@@ -76,9 +100,14 @@ final class LgApps {
     }
 
     /** Apps opened from Home, newest first, at most {@code max}. */
+    /** Fork: the TV's own Settings app. It stays in the band but never counts as recently opened or watched. */
+    static boolean isSystemSettings(String pkg) {
+        return pkg.equals("com.android.tv.settings") || pkg.equals("com.android.settings");
+    }
+
     static List<App> recent(List<App> apps, int max) {
         List<App> out = new ArrayList<>();
-        for (App a : apps) if (a.lastOpened > 0) out.add(a);
+        for (App a : apps) if (a.lastOpened > 0 && !isSystemSettings(a.pkg)) out.add(a);
         Collections.sort(out, (a, b) -> Long.compare(b.lastOpened, a.lastOpened));
         return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
     }
@@ -97,22 +126,11 @@ final class LgApps {
         }
     }
 
-    /** A bundled banner_* from app_banners first (the fork's bare logos), then the app's own banner, then its icon. */
-    private static Drawable artwork(Context ctx, PackageManager pm, ResolveInfo ri, Map<String, String> banners) {
+    /** The bundled banner_* wordmark from app_banners (the fork's bare logos), or null. */
+    private static Drawable bundledBanner(Context ctx, ResolveInfo ri, Map<String, String> banners) {
         String name = banners.get(ri.activityInfo.packageName);
-        if (name != null && name.startsWith("banner_")) {
-            int id = ctx.getResources().getIdentifier(name, "drawable", ctx.getPackageName());
-            if (id != 0) return ctx.getDrawable(id);
-        }
-        int id = ri.activityInfo.banner != 0 ? ri.activityInfo.banner : ri.activityInfo.applicationInfo.banner;
-        if (id != 0) {
-            try {
-                Resources res = pm.getResourcesForApplication(ri.activityInfo.applicationInfo);
-                Drawable d = res.getDrawableForDensity(id, DisplayMetrics.DENSITY_XHIGH, null);
-                if (d != null) return d;
-            } catch (PackageManager.NameNotFoundException | Resources.NotFoundException ignored) {
-            }
-        }
-        return ri.loadIcon(pm);
+        if (name == null || !name.startsWith("banner_")) return null;
+        int id = ctx.getResources().getIdentifier(name, "drawable", ctx.getPackageName());
+        return id != 0 ? ctx.getDrawable(id) : null;
     }
 }

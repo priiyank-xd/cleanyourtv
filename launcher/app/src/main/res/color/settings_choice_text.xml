@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fork: dark text on a chosen (white) option, white text elsewhere, as in the Settings panel. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="#FF111111" />
+    <item android:color="#FFFFFFFF" />
+</selector>

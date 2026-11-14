@@ -65,7 +65,7 @@ public class LgNavTest {
     }
 
     @Test public void everyMoveLandsOnAKeyThatExists() {
-        List<String> keys = new java.util.ArrayList<>(Arrays.asList("top0", "top1", "feat", "clock", "w1"));
+        List<String> keys = new java.util.ArrayList<>(Arrays.asList("top0", "top1", "top2", "feat", "clock", "w1"));
         for (int i = 0; i < QUICK; i++) keys.add("q" + i);
         for (int i = 0; i < APPS; i++) keys.add("a" + i);
         for (int i = 0; i < CHIPS; i++) keys.add("c" + i);
