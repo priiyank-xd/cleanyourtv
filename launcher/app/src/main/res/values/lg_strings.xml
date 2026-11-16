@@ -49,6 +49,8 @@
     <string name="hub_button_opens" translatable="false">Settings button opens</string>
     <string name="hub_button_menu" translatable="false">This menu</string>
     <string name="hub_button_google" translatable="false">Google TV</string>
+    <string name="hub_search_opens" translatable="false">Search button opens</string>
+    <string name="hub_search_discover" translatable="false">Discover</string>
     <string name="hub_wifi" translatable="false">Wi-Fi and network</string>
     <string name="hub_wifi_sub" translatable="false">Google TV \u00b7 Network and Internet</string>
     <string name="hub_bluetooth" translatable="false">Bluetooth and remotes</string>
@@ -75,4 +77,32 @@
     <string name="screensaver_system_default" translatable="false">Google TV default</string>
     <string name="screensaver_needs_permission" translatable="false">Grant WRITE_SECURE_SETTINGS over ADB first</string>
     <string name="lg_tmdb_notice" translatable="false">New this week and Trending come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
+    <!-- Fork: Discover, the launcher's own search and title pages. -->
+    <string name="dc_search_hint" translatable="false">Movies and shows</string>
+    <string name="dc_recent" translatable="false">Recent</string>
+    <string name="dc_popular" translatable="false">Popular on your apps</string>
+    <string name="dc_results" translatable="false">Top results</string>
+    <string name="dc_count" translatable="false">%1$d titles</string>
+    <string name="dc_nothing" translatable="false">Nothing for \u201c%1$s\u201d</string>
+    <string name="dc_offline" translatable="false">Can\'t reach TMDB. Check the internet connection.</string>
+    <string name="dc_no_key" translatable="false">Discover needs a TMDB key in this build.</string>
+    <string name="dc_loading" translatable="false">Loading\u2026</string>
+    <string name="dc_load_failed" translatable="false">Couldn\'t load this title. Check the internet connection.</string>
+    <string name="dc_watch_on" translatable="false">Watch on %1$s</string>
+    <string name="dc_get" translatable="false">Get %1$s</string>
+    <string name="dc_google" translatable="false">Open in Google TV</string>
+    <string name="dc_more" translatable="false">More</string>
+    <string name="dc_also" translatable="false">Also on</string>
+    <string name="dc_all_options" translatable="false">All options</string>
+    <string name="dc_not_streaming" translatable="false">Not streaming in India right now</string>
+    <string name="dc_where" translatable="false">Where to watch</string>
+    <string name="dc_where_sub" translatable="false">India \u00b7 availability from JustWatch</string>
+    <string name="dc_stream" translatable="false">Stream</string>
+    <string name="dc_rent" translatable="false">Rent</string>
+    <string name="dc_buy" translatable="false">Buy</string>
+    <string name="dc_free" translatable="false">Free</string>
+    <string name="dc_open" translatable="false">Open</string>
+    <string name="dc_get_app" translatable="false">Get app</string>
+    <string name="dc_search_it" translatable="false">Search</string>
+    <string name="dc_cant_open" translatable="false">Couldn\'t open %1$s</string>
 </resources>

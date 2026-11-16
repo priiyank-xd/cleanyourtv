@@ -462,6 +462,13 @@ final class Config {
     /** Settings menu's "Settings button opens": "hub" (the menu, default) or "system" (Google TV's settings). */
     static final String LG_SETTINGS_BUTTON_KEY = "lg_settings_button";
 
+    /** Fork: Settings menu's "Search button opens": "discover" (the launcher's own, default) or "google". */
+    static final String LG_SEARCH_BUTTON_KEY = "lg_search_button";
+
+    static String lgSearchButton(Context ctx) {
+        return HubChoices.searchButton(ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE).getString(LG_SEARCH_BUTTON_KEY, null));
+    }
+
     static int lgArtMinutes(Context ctx) {
         return HubChoices.artMinutes(ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE).getString(LG_ART_MINUTES_KEY, null));
     }

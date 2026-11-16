@@ -1,7 +1,6 @@
 package com.gathin.tvhome;
 
 import android.Manifest;
-import android.app.SearchManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.ActivityNotFoundException;
@@ -284,6 +283,9 @@ final class LgHome {
             else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && okDown && focus.equals("top1")) {
                 okDown = false;
                 openSettings(true);
+            } else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 1 && okDown && focus.equals("top0")) {
+                okDown = false;
+                openSearch(true);
             } else if (e.getAction() == KeyEvent.ACTION_UP && okDown) {
                 okDown = false;
                 activate();
@@ -1239,20 +1241,20 @@ final class LgHome {
         if (focus.equals("feat")) {
             if (slides.isEmpty()) return;
             Slide sl = slides.get(slide);
-            if (sl.title != null) search(sl.title.name); else LgApps.launch(act, sl.app);
+            if (sl.title != null) openTitle(sl.title); else LgApps.launch(act, sl.app);
             return;
         }
-        if (focus.equals("top0")) { search(null); return; }
+        if (focus.equals("top0")) { openSearch(false); return; }
         if (focus.equals("top1")) { openSettings(false); return; }
         if (focus.equals("top2")) { start(SystemSettings.profileIntent(act)); return; }
         if (focus.equals("clock")) { start(new Intent(act, ClockActivity.class)); return; }
         if (focus.equals("w1")) {
-            // First OK opens peek mode; OK there searches for the title shown.
+            // First OK opens peek mode; OK there opens the title shown (Discover, or Google TV's search).
             List<Tmdb.Title> list = feed.newThisWeek();
             if (list.isEmpty()) return;
             if (!newOpen) { openNew(); return; }
             closeNew(false);
-            search(list.get(Math.min(newIndex, list.size() - 1)).name);
+            openTitle(list.get(Math.min(newIndex, list.size() - 1)));
             return;
         }
         int n = LgNav.parse(focus);
@@ -1298,11 +1300,24 @@ final class LgHome {
         return act.getSharedPreferences(Config.SETTINGS_NAME, Context.MODE_PRIVATE).getLong(Config.SETTINGS_REVISION_KEY, 0);
     }
 
+    /** Fork: Search on Home opens Discover or Google TV's search, as the Settings menu says; a hold opens the other. */
+    private void openSearch(boolean hold) {
+        if (HubChoices.searchOpensDiscover(Config.lgSearchButton(act), hold)) start(new Intent(act, SearchActivity.class));
+        else search(null);
+    }
+
+    /** Fork: OK on a TMDB title on Home: its page in Discover, or Google TV's search for it, following Search. */
+    private void openTitle(Tmdb.Title t) {
+        if (HubChoices.searchOpensDiscover(Config.lgSearchButton(act), false)) {
+            start(TitleActivity.intent(act, t.kind, t.id, t.name, t.backdrop));
+        } else {
+            search(t.name);
+        }
+    }
+
     /** Google TV search (Gemini on newer firmware), for a title when one is given: where to watch, ratings, watchlist. */
     private void search(String query) {
-        Intent i = new Intent(SearchManager.INTENT_ACTION_GLOBAL_SEARCH);
-        if (query != null) i.putExtra(SearchManager.QUERY, query);
-        if (!start(i) && !start(new Intent(Intent.ACTION_ASSIST))) {
+        if (!Watch.googleSearch(act, query)) {
             android.widget.Toast.makeText(act, R.string.lg_search_unavailable, android.widget.Toast.LENGTH_SHORT).show();
         }
     }

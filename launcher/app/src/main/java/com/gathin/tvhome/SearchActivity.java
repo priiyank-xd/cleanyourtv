@@ -1,0 +1,357 @@
+package com.gathin.tvhome;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Discover's search screen (fork only), opened by Search on Home. The field is focused and the TV's own keyboard
+ * (Gboard on Google TV) is up when it opens, so typing or the keyboard's mic starts at once. Results follow the
+ * typing; their first row sits above the keyboard, and Search on the keyboard closes it and moves to the results.
+ * An empty field shows recent searches and what's popular on your apps. Back from the results returns to the field,
+ * and Back from the field returns to Home.
+ */
+public class SearchActivity extends Activity {
+    private static final String PREFS = "discover", RECENT_KEY = "recent";
+    private static final long TYPE_PAUSE_MS = 350;
+    private static final float CARD_W = 200, GAP = 16;
+    private static final int COLUMNS = 4;
+
+    private DiscoverUi ui;
+    private DiscoverNet net;
+    private TmdbFeed feed;
+    private SharedPreferences prefs;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private EditText field;
+    private FrameLayout fieldBox;
+    private ScrollView scroll;
+    private LinearLayout content;
+    /** The first focusable result, where Down from the field and Search on the keyboard go. */
+    private View firstResult;
+    /** Answers to older queries are dropped. */
+    private int seq;
+    private final Runnable typed = () -> run(field.getText().toString());
+
+    @Override
+    protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        ui = new DiscoverUi(this);
+        net = DiscoverNet.get(this);
+        feed = new TmdbFeed(this, BuildConfig.TMDB_TOKEN);
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+
+        FrameLayout root = new FrameLayout(this);
+        GradientDrawable glow = new GradientDrawable();
+        glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        glow.setGradientCenter(0.5f, 0f);
+        glow.setGradientRadius(ui.px(620));
+        glow.setColors(new int[]{0x8C1E2C48, 0x0008080B});
+        root.setBackground(new LayerDrawable(new Drawable[]{DiscoverUi.round(0xFF08080B, 0), glow}));
+        root.setClipChildren(false);
+
+        // the search field: a glass capsule, brighter while it has focus
+        fieldBox = new FrameLayout(this);
+        fieldBox.setBackground(ui.glass(26));
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_lg_search);
+        icon.setAlpha(0.75f);
+        FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(ui.px(20), ui.px(20), Gravity.CENTER_VERTICAL);
+        ilp.leftMargin = ui.px(22);
+        fieldBox.addView(icon, ilp);
+        field = new EditText(this);
+        field.setId(View.generateViewId());
+        field.setBackground(null);
+        field.setTextColor(DiscoverUi.INK);
+        field.setHintTextColor(0x66FFFFFF);
+        field.setHint(R.string.dc_search_hint);
+        field.setTextSize(TypedValue.COMPLEX_UNIT_PX, ui.px(20));
+        field.setTypeface(UiFont.get(this, R.string.font_regular));
+        field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_TEXT);
+        field.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        field.setPadding(0, 0, 0, 0);
+        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(-1, -1);
+        flp.leftMargin = ui.px(54);
+        flp.rightMargin = ui.px(22);
+        fieldBox.addView(field, flp);
+        field.setOnFocusChangeListener((v, has) -> fieldBox.setBackground(ui.field(26, has)));
+        ui.place(root, fieldBox, 180, 40, 600, 52);
+
+        scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setClipToPadding(false);
+        scroll.setClipChildren(false);
+        scroll.setVerticalFadingEdgeEnabled(true);
+        scroll.setFadingEdgeLength(ui.px(24));
+        content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
+        content.setPadding(ui.px(56), ui.px(14), ui.px(56), ui.px(48));
+        scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
+        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(-1, -1);
+        slp.topMargin = ui.px(108);
+        root.addView(scroll, slp);
+        setContentView(root);
+
+        field.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+            }
+
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {
+            }
+
+            @Override public void afterTextChanged(Editable s) {
+                handler.removeCallbacks(typed);
+                handler.postDelayed(typed, TYPE_PAUSE_MS);
+            }
+        });
+        field.setOnEditorActionListener((v, action, e) -> {
+            boolean go = action == EditorInfo.IME_ACTION_SEARCH || action == EditorInfo.IME_ACTION_DONE
+                    || (e != null && e.getKeyCode() == KeyEvent.KEYCODE_ENTER && e.getAction() == KeyEvent.ACTION_DOWN);
+            if (!go) return false;
+            handler.removeCallbacks(typed);
+            run(field.getText().toString());
+            remember(field.getText().toString());
+            hideKeyboard();
+            if (firstResult != null) firstResult.requestFocus();
+            return true;
+        });
+        field.setOnKeyListener((v, code, e) -> {
+            if (code == KeyEvent.KEYCODE_DPAD_DOWN && e.getAction() == KeyEvent.ACTION_DOWN && firstResult != null) {
+                hideKeyboard();
+                firstResult.requestFocus();
+                return true;
+            }
+            return false;
+        });
+
+        run("");
+        field.requestFocus();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        // Back from the results returns to the field, at the top; Back from the field returns to Home.
+        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && !field.hasFocus()) {
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                field.requestFocus();
+                scroll.smoothScrollTo(0, 0);
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    @Override
+    protected void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
+        feed.shutdown();
+        super.onDestroy();
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_UI_HIDDEN) net.trimMemory();
+    }
+
+    // ---- searching ----
+
+    private void run(String query) {
+        String q = query.trim();
+        int mine = ++seq;
+        if (q.isEmpty()) {
+            showStart();
+            return;
+        }
+        if (!net.enabled()) {
+            showMessage(getString(R.string.dc_no_key));
+            return;
+        }
+        net.search(q, hits -> {
+            if (mine != seq || isDestroyed()) return;
+            if (hits == null) {
+                showMessage(getString(R.string.dc_offline));
+                content.addView(new View(this), new LinearLayout.LayoutParams(1, ui.px(26)));
+                popular();   // what was saved last time, so the screen is never empty
+            }
+            else showResults(q, hits);
+        });
+    }
+
+    private void remember(String query) {
+        List<String> recent = Discover.addRecent(Discover.splitRecent(prefs.getString(RECENT_KEY, null)), query, Discover.MAX_RECENT);
+        prefs.edit().putString(RECENT_KEY, Discover.joinRecent(recent)).apply();
+    }
+
+    // ---- what the screen shows ----
+
+    /** An empty field: recent searches, then what's popular on your apps. */
+    private void showStart() {
+        clear();
+        List<String> recent = Discover.splitRecent(prefs.getString(RECENT_KEY, null));
+        if (!recent.isEmpty()) {
+            label(getString(R.string.dc_recent), null);
+            HorizontalScrollView hs = new HorizontalScrollView(this);
+            hs.setHorizontalScrollBarEnabled(false);
+            hs.setClipChildren(false);
+            hs.setClipToPadding(false);
+            LinearLayout row = new LinearLayout(this);
+            row.setClipChildren(false);
+            row.setPadding(0, ui.px(4), 0, ui.px(4));
+            for (String r : recent) {
+                TextView chip = ui.text(r, 14, R.string.font_medium, DiscoverUi.INK);
+                chip.setGravity(Gravity.CENTER);
+                chip.setPadding(ui.px(18), 0, ui.px(18), 0);
+                ui.focusGlass(chip, 20);
+                chip.setOnClickListener(v -> {
+                    field.setText(r);
+                    field.setSelection(r.length());
+                    handler.removeCallbacks(typed);
+                    run(r);
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(40));
+                lp.rightMargin = ui.px(12);
+                row.addView(chip, lp);
+                if (firstResult == null) firstResult = chip;
+                chip.setNextFocusUpId(field.getId());
+            }
+            hs.addView(row);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.bottomMargin = ui.px(26);
+            content.addView(hs, lp);
+        }
+        popular();
+    }
+
+    private void showResults(String q, List<Discover.Hit> hits) {
+        clear();
+        if (hits.isEmpty()) {
+            label(getString(R.string.dc_nothing, q), null);
+            content.addView(new View(this), new LinearLayout.LayoutParams(1, ui.px(14)));
+            popular();
+            return;
+        }
+        label(getString(R.string.dc_results), getString(R.string.dc_count, hits.size()));
+        List<Item> items = new ArrayList<>();
+        for (Discover.Hit h : hits) items.add(new Item(h.picture(), h.name, h.kind, h.id, h.backdrop));
+        grid(items);
+    }
+
+    private void showMessage(String message) {
+        clear();
+        TextView t = ui.text(message, 15, R.string.font_regular, DiscoverUi.INK_SOFT);
+        t.setSingleLine(false);
+        content.addView(t);
+    }
+
+    /** Trending and new titles on your apps, from Home's TMDB cache. */
+    private void popular() {
+        List<Item> items = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        List<Tmdb.Title> all = new ArrayList<>(feed.trending());
+        all.addAll(feed.newThisWeek());
+        for (Tmdb.Title t : all) {
+            if (items.size() >= 8) break;
+            if (seen.add(t.kind + t.id)) items.add(new Item(t.backdrop, t.name, t.kind, t.id, t.backdrop));
+        }
+        if (items.isEmpty()) return;
+        label(getString(R.string.dc_popular), null);
+        grid(items);
+    }
+
+    private void clear() {
+        content.removeAllViews();
+        firstResult = null;
+    }
+
+    private void label(String title, String note) {
+        LinearLayout line = new LinearLayout(this);
+        line.setGravity(Gravity.BOTTOM);
+        line.addView(ui.text(title, 16, R.string.font_medium, DiscoverUi.INK));
+        if (note != null) {
+            TextView n = ui.text(note, 13, R.string.font_regular, 0x80FFFFFF);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+            lp.leftMargin = ui.px(10);
+            line.addView(n, lp);
+        }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.bottomMargin = ui.px(14);
+        content.addView(line, lp);
+    }
+
+    private static final class Item {
+        final String picture, name, kind, backdrop;
+        final int id;
+
+        Item(String picture, String name, String kind, int id, String backdrop) {
+            this.picture = picture;
+            this.name = name;
+            this.kind = kind;
+            this.id = id;
+            this.backdrop = backdrop;
+        }
+    }
+
+    /** Title cards, four to a row. The first row's Up goes to the field. */
+    private void grid(List<Item> items) {
+        LinearLayout row = null;
+        boolean firstRow = firstResult == null;
+        for (int i = 0; i < items.size(); i++) {
+            if (i % COLUMNS == 0) {
+                row = new LinearLayout(this);
+                row.setClipChildren(false);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+                rlp.bottomMargin = ui.px(22);
+                content.addView(row, rlp);
+            }
+            Item it = items.get(i);
+            LinearLayout card = ui.card(it.picture, it.name, CARD_W, v -> open(it));
+            card.setId(View.generateViewId());
+            if (firstRow && i < COLUMNS) card.setNextFocusUpId(field.getId());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(CARD_W), -2);
+            if (i % COLUMNS != COLUMNS - 1) lp.rightMargin = ui.px(GAP);
+            row.addView(card, lp);
+            if (firstResult == null) firstResult = card;
+        }
+        if (firstResult != null) field.setNextFocusDownId(firstResult.getId() == View.NO_ID ? View.NO_ID : firstResult.getId());
+    }
+
+    private void open(Item it) {
+        remember(field.getText().toString());
+        startActivity(TitleActivity.intent(this, it.kind, it.id, it.name, it.backdrop));
+    }
+
+    private void hideKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(field.getWindowToken(), 0);
+    }
+}

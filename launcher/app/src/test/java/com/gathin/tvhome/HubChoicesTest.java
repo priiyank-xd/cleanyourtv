@@ -26,6 +26,19 @@ public class HubChoicesTest {
         assertEquals(HubChoices.OPEN_HUB, HubChoices.settingsTarget("system", true));
     }
 
+    @Test public void searchOpensDiscoverUnlessGoogleTvIsChosen() {
+        assertEquals("discover", HubChoices.searchButton(null));
+        assertEquals("discover", HubChoices.searchButton("anything"));
+        assertEquals("google", HubChoices.searchButton("google"));
+    }
+
+    @Test public void aHoldOnSearchOpensTheOtherOne() {
+        assertEquals(true, HubChoices.searchOpensDiscover("discover", false));
+        assertEquals(false, HubChoices.searchOpensDiscover("discover", true));
+        assertEquals(false, HubChoices.searchOpensDiscover("google", false));
+        assertEquals(true, HubChoices.searchOpensDiscover("google", true));
+    }
+
     @Test public void leftAndRightWrapAroundTheChoices() {
         assertEquals(1, HubChoices.step(0, 3, 1));
         assertEquals(0, HubChoices.step(2, 3, 1));

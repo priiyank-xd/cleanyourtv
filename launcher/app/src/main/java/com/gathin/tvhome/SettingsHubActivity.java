@@ -27,7 +27,7 @@ import java.util.function.IntSupplier;
 
 /**
  * The settings menu of the LG-style home (fork only): a side panel over Home with the launcher's own choices
- * (background, how often movie art changes, clock, what the Settings button opens, Follow theme) and shortcuts
+ * (background, how often movie art changes, clock, what the Settings and Search buttons open) and shortcuts
  * into Google TV's settings pages. Choices are saved in the launcher's settings and Home picks them up when the
  * panel closes. Back closes it; Back from a Google TV page returns here.
  */
@@ -134,6 +134,10 @@ public class SettingsHubActivity extends Activity {
                 new String[]{getString(R.string.hub_button_menu), getString(R.string.hub_button_google)},
                 () -> HubChoices.BUTTON_SYSTEM.equals(Config.lgSettingsButton(this)) ? 1 : 0,
                 i -> save(Config.LG_SETTINGS_BUTTON_KEY, i == 1 ? HubChoices.BUTTON_SYSTEM : HubChoices.BUTTON_HUB), null);
+        choiceRow(list, R.drawable.ic_lg_search, R.string.hub_search_opens,
+                new String[]{getString(R.string.hub_search_discover), getString(R.string.hub_button_google)},
+                () -> HubChoices.SEARCH_GOOGLE.equals(Config.lgSearchButton(this)) ? 1 : 0,
+                i -> save(Config.LG_SEARCH_BUTTON_KEY, i == 1 ? HubChoices.SEARCH_GOOGLE : HubChoices.SEARCH_DISCOVER), null);
 
         setContentView(root);
         refresh();
