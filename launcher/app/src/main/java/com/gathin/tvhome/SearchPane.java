@@ -222,6 +222,22 @@ final class SearchPane implements DiscoverActivity.Pane {
                 row.addView(chip, lp);
                 if (firstResult == null) firstResult = chip;
             }
+            // last in the row: clear them all (plain words; Home's pill around them when focused)
+            TextView clearAll = ui.text(act.getString(R.string.dc_clear_recent), 14, R.string.font_medium, DiscoverUi.INK);
+            clearAll.setGravity(Gravity.CENTER);
+            clearAll.setPadding(ui.px(16), 0, ui.px(16), 0);
+            ui.focusBare(clearAll, 1.06f);
+            clearAll.setNextFocusUpId(field.getId());
+            clearAll.setOnClickListener(v -> {
+                prefs.edit().remove(RECENT_KEY).apply();
+                showStart();
+                // focus moves down to the first popular title, not the field (that would pop the keyboard up)
+                if (firstResult != null) firstResult.requestFocus();
+                else field.requestFocus();
+            });
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-2, ui.px(40));
+            clp.leftMargin = ui.px(4);
+            row.addView(clearAll, clp);
             gap(26);
         }
         popular();

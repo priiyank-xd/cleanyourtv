@@ -79,6 +79,7 @@
     <string name="lg_tmdb_notice" translatable="false">New this week and Trending come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
     <!-- Fork: Discover, the launcher's own search and title pages. -->
     <string name="dc_search_hint" translatable="false">Movies and shows</string>
+    <string name="dc_clear_recent" translatable="false">Clear</string>
     <string name="dc_recent" translatable="false">Recent</string>
     <string name="dc_popular" translatable="false">Popular on your apps</string>
     <string name="dc_results" translatable="false">Top results</string>
