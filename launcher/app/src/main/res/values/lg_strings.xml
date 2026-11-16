@@ -182,7 +182,7 @@
     <string name="dc_because" translatable="false">Because you saved %1$s</string>
     <string name="hub_tmdb" translatable="false">TMDB account</string>
     <string name="hub_tmdb_off" translatable="false">Not connected \u00b7 for Watch later and lists</string>
-    <string name="dc_ask" translatable="false">Ask in plain words: \u201c%1$s\u201d</string>
+    <string name="dc_ask" translatable="false">Ask Gemini: \u201c%1$s\u201d</string>
     <string name="dc_asking" translatable="false">Asking Gemini\u2026</string>
     <string name="dc_understood" translatable="false">Understood as</string>
     <string name="dc_ask_failed" translatable="false">Gemini couldn\'t answer. Try a plain search, or check the Gemini key and its credits in AI Studio.</string>
