@@ -243,12 +243,18 @@ final class DiscoverNet {
     }
 
     private static JSONObject send(String method, String url, String body, String bearer) throws Exception {
+        return send(method, url, body, bearer, null);
+    }
+
+    /** {@code googleKey}, when given, goes in Google's API-key header, never in the URL. */
+    private static JSONObject send(String method, String url, String body, String bearer, String googleKey) throws Exception {
         java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
         c.setConnectTimeout(10_000);
-        c.setReadTimeout(15_000);
+        c.setReadTimeout(20_000);
         c.setRequestMethod(method);
         c.setRequestProperty("Accept", "application/json");
         if (bearer != null && !bearer.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + bearer);
+        if (googleKey != null && !googleKey.isEmpty()) c.setRequestProperty("x-goog-api-key", googleKey);
         try {
             if (body != null) {
                 c.setDoOutput(true);
@@ -269,6 +275,46 @@ final class DiscoverNet {
         } finally {
             c.disconnect();
         }
+    }
+
+    // ---- Ask in plain words ----
+
+    private final Map<String, Discover.Ask> asked = new java.util.HashMap<>();
+
+    boolean canAsk() {
+        return BuildConfig.GEMINI_KEY != null && !BuildConfig.GEMINI_KEY.trim().isEmpty();
+    }
+
+    /**
+     * Gemini's reading of a sentence as filters; null when it couldn't answer (no key, no network, no credits).
+     * Only the sentence and today's date are sent. The same sentence is asked once per run.
+     */
+    void ask(String sentence, Done<Discover.Ask> done) {
+        String key = sentence.trim().toLowerCase(java.util.Locale.ROOT);
+        Discover.Ask known;
+        synchronized (asked) {
+            known = asked.get(key);
+        }
+        if (known != null || !canAsk()) {
+            done.on(known);
+            return;
+        }
+        calls.execute(() -> {
+            Discover.Ask a = null;
+            try {
+                a = Discover.parseGemini(send("POST", Discover.geminiUrl(), Discover.geminiBody(sentence, java.time.LocalDate.now()),
+                        null, BuildConfig.GEMINI_KEY.trim()));
+                if (a != null) {
+                    synchronized (asked) {
+                        asked.put(key, a);
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "ask failed: " + e.getMessage());
+            }
+            Discover.Ask result = a;
+            main.post(() -> done.on(result));
+        });
     }
 
     /** Your watchlist or favourites (WATCHLIST or FAVORITE), movies and series together, newest first. */

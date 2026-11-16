@@ -295,4 +295,66 @@ public class DiscoverTest {
                 com.google.zxing.BarcodeFormat.QR_CODE, 392, 392);
         assertTrue(m.getWidth() >= 392);
     }
+
+    @Test public void geminiIsAskedForOnlyDiscoversFilters() throws Exception {
+        JSONObject b = new JSONObject(Discover.geminiBody(" a light comedy on prime ", java.time.LocalDate.of(2026, 11, 16)));
+        assertEquals("a light comedy on prime", b.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text"));
+        JSONObject schema = b.getJSONObject("generationConfig").getJSONObject("responseSchema");
+        assertEquals("application/json", b.getJSONObject("generationConfig").getString("responseMimeType"));
+        assertTrue(schema.getJSONObject("properties").getJSONObject("genres").toString().contains("Thriller"));
+        assertTrue(schema.getJSONObject("properties").getJSONObject("services").toString().contains("JioHotstar"));
+        assertTrue(b.getJSONObject("systemInstruction").toString().contains("2026-11-16"));
+        assertTrue(Discover.geminiUrl().endsWith(":generateContent"));
+        assertTrue(!Discover.geminiUrl().contains("key="));
+    }
+
+    private static JSONObject gemini(String filters) throws Exception {
+        return new JSONObject().put("candidates", new org.json.JSONArray().put(new JSONObject().put("content",
+                new JSONObject().put("parts", new org.json.JSONArray().put(new JSONObject().put("text", filters))))));
+    }
+
+    @Test public void geminiAnswersBecomeFiltersAndUnknownsAreDropped() throws Exception {
+        Discover.Ask a = Discover.parseGemini(gemini("{\"kind\":\"movie\",\"genres\":[\"Comedy\",\"Westerns\"],\"language\":\"HI\","
+                + "\"maxMinutes\":120,\"fromYear\":2024,\"toYear\":0,\"services\":[\"Prime Video\",\"Mubi\"],\"similarTo\":\"\",\"sort\":\"best\"}"));
+        assertEquals("movie", a.kind);
+        assertEquals(Arrays.asList("Comedy"), a.genres);
+        assertEquals("hi", a.language);
+        assertEquals(Arrays.asList("Prime Video"), a.services);
+        assertEquals(Discover.SORT_POPULAR, a.sort);
+        assertNull(Discover.parseGemini(new JSONObject("{\"error\":{\"message\":\"credits\"}}")));
+        assertNull(Discover.parseGemini(gemini("not json")));
+    }
+
+    @Test public void anAskSearchesTmdbWithItsFilters() throws Exception {
+        Discover.Ask a = Discover.parseGemini(gemini("{\"kind\":\"any\",\"genres\":[\"Romance\"],\"language\":\"\",\"maxMinutes\":120,"
+                + "\"fromYear\":2024,\"toYear\":0,\"services\":[\"Prime Video\"],\"similarTo\":\"\",\"sort\":\"popular\"}"));
+        java.time.LocalDate today = java.time.LocalDate.of(2026, 11, 16);
+        java.util.Set<Integer> providers = Discover.askProviders(a, new java.util.LinkedHashSet<>(Arrays.asList(8)));
+        assertEquals(new java.util.LinkedHashSet<>(Arrays.asList(119)), providers);   // the app named, not your apps
+        String movie = Discover.askUrl(a, "movie", providers, today);
+        assertTrue(movie.contains("with_genres=10749"));
+        assertTrue(movie.contains("with_runtime.lte=120"));
+        assertTrue(movie.contains("primary_release_date.gte=2024-01-01"));
+        assertTrue(movie.contains("primary_release_date.lte=2026-11-16"));
+        assertTrue(movie.contains("with_watch_providers=119"));
+        assertNull(Discover.askUrl(a, "tv", providers, today));   // no Romance for series
+        Discover.Ask movies = Discover.without(a, "genre:Romance");
+        movies.kind = "movie";
+        assertNull(Discover.askUrl(movies, "tv", providers, today));
+    }
+
+    @Test public void understoodFiltersReadAsCapsulesAndCanBeDropped() throws Exception {
+        Discover.Ask a = Discover.parseGemini(gemini("{\"kind\":\"tv\",\"genres\":[\"Thriller\"],\"language\":\"ta\",\"maxMinutes\":0,"
+                + "\"fromYear\":2020,\"toYear\":2024,\"services\":[],\"similarTo\":\"Dark\",\"sort\":\"top\"}"));
+        List<String[]> chips = Discover.chips(a);
+        List<String> labels = new java.util.ArrayList<>();
+        for (String[] c : chips) labels.add(c[1]);
+        assertEquals(Arrays.asList("Series", "Like Dark", "Thriller", "Tamil", "2020–2024", "Top rated"), labels);
+        Discover.Ask b = Discover.without(Discover.without(a, "years"), "language");
+        assertEquals(0, b.fromYear);
+        assertEquals("", b.language);
+        assertEquals("ta", a.language);   // the original is unchanged
+        assertTrue(Discover.isSentence("a light comedy"));
+        assertTrue(!Discover.isSentence("ganga blue"));
+    }
 }

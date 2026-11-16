@@ -825,6 +825,212 @@ final class Discover {
         return out;
     }
 
+    // ---- Ask in plain words (Gemini) ----
+
+    /** A fast model alias Google keeps current. Ask only turns a sentence into filters, so the lightest one is enough. */
+    static final String GEMINI_MODEL = "gemini-flash-lite-latest";
+
+    /** Streaming services Ask can name, with their TMDB provider ids in India. */
+    static final Map<String, int[]> SERVICES = new java.util.LinkedHashMap<>();
+    static {
+        SERVICES.put("Netflix", new int[]{8});
+        SERVICES.put("Prime Video", new int[]{119});
+        SERVICES.put("JioHotstar", new int[]{2336});
+        SERVICES.put("Zee5", new int[]{232});
+        SERVICES.put("SonyLIV", new int[]{237});
+        SERVICES.put("Apple TV", new int[]{350});
+    }
+
+    /** What Gemini understood of a sentence, as filters TMDB can search with. Empty or 0: not asked for. */
+    static final class Ask {
+        String kind = "any", language = "", similarTo = "", sort = SORT_POPULAR;
+        int maxMinutes, fromYear, toYear;
+        final List<String> genres = new ArrayList<>(), services = new ArrayList<>();
+
+        Ask copy() {
+            Ask a = new Ask();
+            a.kind = kind;
+            a.language = language;
+            a.similarTo = similarTo;
+            a.sort = sort;
+            a.maxMinutes = maxMinutes;
+            a.fromYear = fromYear;
+            a.toYear = toYear;
+            a.genres.addAll(genres);
+            a.services.addAll(services);
+            return a;
+        }
+    }
+
+    static String geminiUrl() {
+        return "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent";
+    }
+
+    /** The request: the sentence, today's date, and a schema that only allows the filters Discover can use. */
+    static String geminiBody(String sentence, LocalDate today) {
+        try {
+            JSONArray genreNames = new JSONArray();
+            for (Genre g : GENRES) genreNames.put(g.name);
+            JSONArray serviceNames = new JSONArray();
+            for (String s : SERVICES.keySet()) serviceNames.put(s);
+            JSONObject props = new JSONObject()
+                    .put("kind", new JSONObject().put("type", "STRING").put("enum", new JSONArray().put("movie").put("tv").put("any")))
+                    .put("genres", new JSONObject().put("type", "ARRAY").put("items", new JSONObject().put("type", "STRING").put("enum", genreNames)))
+                    .put("language", new JSONObject().put("type", "STRING").put("description", "ISO 639-1 code of the original language asked for (hi for Hindi or Bollywood, ta, te, ml, ko...), else empty"))
+                    .put("maxMinutes", new JSONObject().put("type", "INTEGER").put("description", "longest runtime asked for, in minutes, else 0"))
+                    .put("fromYear", new JSONObject().put("type", "INTEGER").put("description", "earliest release year asked for, else 0"))
+                    .put("toYear", new JSONObject().put("type", "INTEGER").put("description", "latest release year asked for, else 0"))
+                    .put("services", new JSONObject().put("type", "ARRAY").put("items", new JSONObject().put("type", "STRING").put("enum", serviceNames)))
+                    .put("similarTo", new JSONObject().put("type", "STRING").put("description", "one title the person wants something like, else empty"))
+                    .put("sort", new JSONObject().put("type", "STRING").put("enum", new JSONArray().put(SORT_POPULAR).put(SORT_TOP).put(SORT_NEW)));
+            JSONArray required = new JSONArray();
+            for (java.util.Iterator<String> it = props.keys(); it.hasNext(); ) required.put(it.next());
+            JSONObject schema = new JSONObject().put("type", "OBJECT").put("properties", props).put("required", required);
+            String instruction = "You turn a TV viewer's request for something to watch, in India, into search filters. "
+                    + "Use only what the request asks for and leave everything else empty or 0. Moods map to genres "
+                    + "(light or feel-good: Comedy; scary: Horror; mind-bending: Sci-Fi). 'Recent' means from "
+                    + (today.getYear() - 2) + " on. Today is " + today + ".";
+            return new JSONObject()
+                    .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", instruction))))
+                    .put("contents", new JSONArray().put(new JSONObject().put("role", "user")
+                            .put("parts", new JSONArray().put(new JSONObject().put("text", sentence.trim())))))
+                    .put("generationConfig", new JSONObject().put("responseMimeType", "application/json")
+                            .put("responseSchema", schema).put("temperature", 0))
+                    .toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    /** The filters from Gemini's answer, null when it had none. Anything outside Discover's choices is dropped. */
+    static Ask parseGemini(JSONObject answer) {
+        JSONArray candidates = answer == null ? null : answer.optJSONArray("candidates");
+        JSONObject first = candidates == null ? null : candidates.optJSONObject(0);
+        JSONObject content = first == null ? null : first.optJSONObject("content");
+        JSONArray parts = content == null ? null : content.optJSONArray("parts");
+        JSONObject part = parts == null ? null : parts.optJSONObject(0);
+        if (part == null) return null;
+        JSONObject f;
+        try {
+            f = new JSONObject(part.optString("text", ""));
+        } catch (org.json.JSONException e) {
+            return null;
+        }
+        Ask a = new Ask();
+        String kind = f.optString("kind");
+        a.kind = "movie".equals(kind) || "tv".equals(kind) ? kind : "any";
+        JSONArray genres = f.optJSONArray("genres");
+        if (genres != null) {
+            for (int i = 0; i < genres.length(); i++) {
+                for (Genre g : GENRES) if (g.name.equals(genres.optString(i)) && !a.genres.contains(g.name)) a.genres.add(g.name);
+            }
+        }
+        String lang = f.optString("language", "").trim().toLowerCase(java.util.Locale.ROOT);
+        a.language = lang.matches("[a-z]{2}") ? lang : "";
+        a.maxMinutes = Math.max(0, f.optInt("maxMinutes"));
+        a.fromYear = year(f.optInt("fromYear"));
+        a.toYear = year(f.optInt("toYear"));
+        JSONArray services = f.optJSONArray("services");
+        if (services != null) {
+            for (int i = 0; i < services.length(); i++) {
+                String s = services.optString(i);
+                if (SERVICES.containsKey(s) && !a.services.contains(s)) a.services.add(s);
+            }
+        }
+        a.similarTo = f.optString("similarTo", "").trim();
+        String sort = f.optString("sort");
+        a.sort = SORT_TOP.equals(sort) || SORT_NEW.equals(sort) ? sort : SORT_POPULAR;
+        return a;
+    }
+
+    private static int year(int y) {
+        return y >= 1900 && y <= 2100 ? y : 0;
+    }
+
+    /** The provider ids an Ask searches: the services it names, else {@code mine} (null for every service). */
+    static Set<Integer> askProviders(Ask a, Set<Integer> mine) {
+        if (a.services.isEmpty()) return mine;
+        Set<Integer> ids = new LinkedHashSet<>();
+        for (String s : a.services) for (int id : SERVICES.get(s)) ids.add(id);
+        return ids;
+    }
+
+    /**
+     * A TMDB discover page for an Ask, for {@code kind} movie or tv; null when that kind can't match (a series
+     * asked of a movie-only genre, or the Ask wants only the other kind).
+     */
+    static String askUrl(Ask a, String kind, Set<Integer> providers, LocalDate today) {
+        boolean movie = "movie".equals(kind);
+        if (!"any".equals(a.kind) && !a.kind.equals(kind)) return null;
+        StringJoiner genres = new StringJoiner(",");
+        for (String name : a.genres) {
+            for (Genre g : GENRES) {
+                if (!g.name.equals(name)) continue;
+                if (g.idFor(kind) == 0) return null;
+                genres.add(String.valueOf(g.idFor(kind)));
+            }
+        }
+        String date = movie ? "primary_release_date" : "first_air_date";
+        StringBuilder u = new StringBuilder(Tmdb.API + "discover/" + (movie ? "movie" : "tv") + "?watch_region=" + Tmdb.REGION
+                + "&language=" + Tmdb.LANGUAGE + "&include_adult=false&page=1");
+        if (SORT_TOP.equals(a.sort)) u.append("&sort_by=vote_average.desc&vote_count.gte=").append(movie ? 200 : 100);
+        else if (SORT_NEW.equals(a.sort)) u.append("&sort_by=").append(date).append(".desc");
+        else u.append("&sort_by=popularity.desc");
+        if (genres.length() > 0) u.append("&with_genres=").append(enc(genres.toString()));
+        if (!a.language.isEmpty()) u.append("&with_original_language=").append(a.language);
+        if (a.maxMinutes > 0 && movie) u.append("&with_runtime.lte=").append(a.maxMinutes);
+        if (a.fromYear > 0) u.append("&").append(date).append(".gte=").append(a.fromYear).append("-01-01");
+        int to = a.toYear > 0 ? a.toYear : 0;
+        if (to > 0) u.append("&").append(date).append(".lte=").append(to).append("-12-31");
+        else if (SORT_NEW.equals(a.sort) || a.fromYear > 0) u.append("&").append(date).append(".lte=").append(today);
+        if (!movie) u.append("&without_genres=").append(enc(Tmdb.SKIP_TV_GENRES));
+        if (providers != null && !providers.isEmpty()) {
+            u.append("&with_watch_monetization_types=flatrate&with_watch_providers=").append(enc(ids(providers)));
+        }
+        return u.toString();
+    }
+
+    /** The understood filters as capsules: {key, label}. Removing one is {@link #without}. */
+    static List<String[]> chips(Ask a) {
+        List<String[]> out = new ArrayList<>();
+        if ("movie".equals(a.kind)) out.add(new String[]{"kind", "Movies"});
+        if ("tv".equals(a.kind)) out.add(new String[]{"kind", "Series"});
+        if (!a.similarTo.isEmpty()) out.add(new String[]{"like", "Like " + a.similarTo});
+        for (String g : a.genres) out.add(new String[]{"genre:" + g, g});
+        if (!a.language.isEmpty()) {
+            String name = a.language;
+            for (Language l : LANGUAGES) if (l.code.equals(a.language)) name = l.english;
+            out.add(new String[]{"language", name});
+        }
+        if (a.maxMinutes > 0) out.add(new String[]{"minutes", "Under " + runtime(a.maxMinutes)});
+        if (a.fromYear > 0 && a.toYear > 0) out.add(new String[]{"years", a.fromYear == a.toYear ? String.valueOf(a.fromYear) : a.fromYear + "\u2013" + a.toYear});
+        else if (a.fromYear > 0) out.add(new String[]{"years", "Since " + a.fromYear});
+        else if (a.toYear > 0) out.add(new String[]{"years", "Before " + (a.toYear + 1)});
+        for (String s : a.services) out.add(new String[]{"service:" + s, s});
+        if (SORT_TOP.equals(a.sort)) out.add(new String[]{"sort", "Top rated"});
+        if (SORT_NEW.equals(a.sort)) out.add(new String[]{"sort", "Newest"});
+        return out;
+    }
+
+    /** The Ask without one of its filters. */
+    static Ask without(Ask a, String key) {
+        Ask b = a.copy();
+        if ("kind".equals(key)) b.kind = "any";
+        else if ("like".equals(key)) b.similarTo = "";
+        else if (key.startsWith("genre:")) b.genres.remove(key.substring(6));
+        else if ("language".equals(key)) b.language = "";
+        else if ("minutes".equals(key)) b.maxMinutes = 0;
+        else if ("years".equals(key)) { b.fromYear = 0; b.toYear = 0; }
+        else if (key.startsWith("service:")) b.services.remove(key.substring(8));
+        else if ("sort".equals(key)) b.sort = SORT_POPULAR;
+        return b;
+    }
+
+    /** Whether a search is a sentence worth asking about, not a name: three words or more. */
+    static boolean isSentence(String q) {
+        return q != null && q.trim().split("\\s+").length >= 3;
+    }
+
     // ---- words on screen ----
 
     /** "Movie · 2025 · Science Fiction, Adventure · 2h 18m · U/A 13+": what's known, at most two genres. */

@@ -230,6 +230,7 @@ final class SearchPane implements DiscoverActivity.Pane {
 
     private void showResults(String q, List<Discover.Hit> people, List<Discover.Hit> titles) {
         clear();
+        askOffer(q);
         if (people.isEmpty() && titles.isEmpty()) {
             label(act.getString(R.string.dc_nothing, q), null);
             gap(14);
@@ -255,6 +256,136 @@ final class SearchPane implements DiscoverActivity.Pane {
             for (Discover.Hit h : titles) items.add(new Item(h.picture(), h.name, h.kind, h.id, h.backdrop));
             grid(items);
         }
+    }
+
+    // ---- Ask in plain words ----
+
+    /** A sentence, with Gemini set up: a capsule offering to ask it in plain words, first in the results. */
+    private void askOffer(String q) {
+        if (!Discover.isSentence(q) || !net.canAsk()) return;
+        LinearLayout pill = new LinearLayout(act);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setPadding(ui.px(16), 0, ui.px(20), 0);
+        ImageView spark = new ImageView(act);
+        spark.setImageResource(R.drawable.ic_dc_spark);
+        pill.addView(spark, new LinearLayout.LayoutParams(ui.px(18), ui.px(18)));
+        TextView t = ui.text(act.getString(R.string.dc_ask, q), 14, R.string.font_medium, DiscoverUi.INK);
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-2, -2);
+        tlp.leftMargin = ui.px(10);
+        pill.addView(t, tlp);
+        t.setMaxWidth(ui.px(640));
+        ui.focusGlass(pill, 22);
+        pill.setOnClickListener(v -> runAsk(q));
+        pill.setNextFocusUpId(field.getId());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
+        lp.bottomMargin = ui.px(24);
+        content.addView(pill, lp);
+        firstResult = pill;
+    }
+
+    private void runAsk(String q) {
+        int mine = ++seq;
+        remember(q);
+        clear();
+        label(act.getString(R.string.dc_asking), null);
+        net.ask(q, a -> {
+            if (mine != seq || act.isDestroyed()) return;
+            if (a == null) {
+                showMessage(act.getString(R.string.dc_ask_failed));
+                gap(26);
+                popular();
+                return;
+            }
+            showAsk(q, a);
+        });
+    }
+
+    /** What Gemini understood, as capsules (OK on one drops it), then the titles TMDB finds for it. */
+    private void showAsk(String q, Discover.Ask a) {
+        int mine = ++seq;
+        clear();
+        List<String[]> chips = Discover.chips(a);
+        if (chips.isEmpty()) {
+            showMessage(act.getString(R.string.dc_ask_nothing));
+            gap(26);
+            popular();
+            return;
+        }
+        label(act.getString(R.string.dc_understood), null);
+        LinearLayout row = shelfRow();
+        for (String[] c : chips) {
+            TextView chip = ui.capsule(c[1] + "  \u00d7");
+            chip.setOnClickListener(v -> showAsk(q, Discover.without(a, c[0])));
+            chip.setNextFocusUpId(field.getId());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(40));
+            lp.rightMargin = ui.px(10);
+            row.addView(chip, lp);
+            if (firstResult == null) firstResult = chip;
+        }
+        gap(22);
+        TextView status = ui.text(act.getString(R.string.dc_loading), 14, R.string.font_regular, DiscoverUi.INK_DIM);
+        content.addView(status);
+        gap(14);
+        DiscoverNet.Done<List<Discover.Hit>> show = hits -> {
+            if (mine != seq || act.isDestroyed()) return;
+            if (hits == null) {
+                status.setText(R.string.dc_offline);
+                return;
+            }
+            status.setText(hits.isEmpty() ? act.getString(R.string.dc_ask_none) : act.getString(R.string.dc_count, hits.size()));
+            List<Item> items = new ArrayList<>();
+            for (Discover.Hit h : hits) items.add(new Item(h.picture(), h.name, h.kind, h.id, h.backdrop));
+            grid(items);
+        };
+        if (!a.similarTo.isEmpty()) {
+            alike(a, show);
+            return;
+        }
+        Set<Integer> installed = Tmdb.providerIds(Watch.installed(act, Tmdb.PROVIDERS.keySet()));
+        Set<Integer> providers = Discover.askProviders(a, installed.isEmpty() ? null : installed);
+        java.time.LocalDate today = java.time.LocalDate.now();
+        String movies = Discover.askUrl(a, "movie", providers, today), series = Discover.askUrl(a, "tv", providers, today);
+        List<List<Discover.Hit>> got = new ArrayList<>();
+        int[] left = {(movies == null ? 0 : 1) + (series == null ? 0 : 1)};
+        if (left[0] == 0) {
+            show.on(new ArrayList<>());
+            return;
+        }
+        for (String[] q2 : new String[][]{{movies, "movie"}, {series, "tv"}}) {
+            if (q2[0] == null) continue;
+            String kind = q2[1];
+            net.answer(q2[0], DiscoverNet.HOURS, ans -> {
+                if (ans != null) got.add(Discover.parseList(ans.json, kind, 20));
+                if (--left[0] > 0) return;
+                if (got.isEmpty()) {
+                    show.on(null);
+                    return;
+                }
+                List<Discover.Hit> all = got.size() == 2 ? Discover.merge(got.get(0), got.get(1), 20) : got.get(0);
+                show.on(all);
+            });
+        }
+    }
+
+    /** "Something like X": TMDB's recommendations for the first title that matches X, of the kind asked. */
+    private void alike(Discover.Ask a, DiscoverNet.Done<List<Discover.Hit>> show) {
+        net.search(a.similarTo, answer -> {
+            List<Discover.Hit> found = answer == null ? null : Discover.parseSearch(answer, 1);
+            if (found == null || found.isEmpty()) {
+                show.on(answer == null ? null : new ArrayList<>());
+                return;
+            }
+            Discover.Hit h = found.get(0);
+            net.details(h.kind, h.id, d -> {
+                if (d == null) {
+                    show.on(null);
+                    return;
+                }
+                List<Discover.Hit> out = new ArrayList<>();
+                for (Discover.Hit m : d.more) if ("any".equals(a.kind) || a.kind.equals(m.kind)) out.add(m);
+                show.on(out);
+            });
+        });
     }
 
     private void showMessage(String message) {
