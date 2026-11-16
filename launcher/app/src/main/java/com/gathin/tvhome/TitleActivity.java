@@ -95,6 +95,10 @@ public class TitleActivity extends Activity {
         root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         scroll.getViewTreeObserver().addOnScrollChangedListener(() ->
                 picture.setAlpha(Math.max(0.12f, 1f - scroll.getScrollY() / (float) ui.px(420))));
+        // Back up at Watch, the trailer or Also on, the page shows its top again: name, facts and story
+        scroll.getViewTreeObserver().addOnGlobalFocusChangeListener((was, now) -> {
+            if (now != null && isInside(now, column) && scroll.getScrollY() > 0) scroll.smoothScrollTo(0, 0);
+        });
 
         FrameLayout hero = new FrameLayout(this);
         hero.setClipChildren(false);
@@ -239,7 +243,7 @@ public class TitleActivity extends Activity {
         LinearLayout buttons = buttonsRow();
         if (!apps.isEmpty()) {
             // "Watch on" and the apps' symbols, as on Discover's hero
-            buttons.addView(ui.text(getString(R.string.dc_watch_on_apps), 15, R.string.font_medium, DiscoverUi.INK_SOFT));
+            buttons.addView(label(getString(R.string.dc_watch_on_apps)));
             watchButton = null;
             for (Discover.Provider p : apps) {
                 View b = ui.appSymbol(p, installed.contains(Discover.packageFor(p.id)), v -> watch(p));
@@ -260,7 +264,6 @@ public class TitleActivity extends Activity {
             buttons.addView(rateButton(), roundLp());
         }
         column.addView(buttons);
-        if (!d.trailer.isEmpty()) column.addView(trailerRow());
 
         List<Discover.Provider> also = Discover.others(d.where, apps, 3);
         if (d.where.isEmpty()) {
@@ -270,14 +273,18 @@ public class TitleActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setClipChildren(false);
             if (!also.isEmpty()) {
-                row.addView(ui.text(getString(R.string.dc_also), 13, R.string.font_regular, DiscoverUi.INK_DIM));
+                // the same words, symbols and focus as "Watch on" above: OK opens that app (to rent or buy there)
+                row.addView(label(getString(R.string.dc_also)));
+                boolean firstOne = true;
                 for (Discover.Provider p : also) {
-                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(46), ui.px(26));
-                    lp.leftMargin = ui.px(10);
-                    row.addView(ui.providerLogo(p, 46, 26), lp);
+                    View b = ui.appSymbol(p, installed.contains(Discover.packageFor(p.id)), v -> watch(p));
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(48), ui.px(48));
+                    lp.leftMargin = ui.px(firstOne ? 14 : 12);
+                    row.addView(b, lp);
+                    firstOne = false;
                 }
             }
-            TextView all = ui.text(getString(R.string.dc_all_options) + "  ›", 13, R.string.font_medium, DiscoverUi.INK);
+            TextView all = ui.text(getString(R.string.dc_all_options) + "  ›", 15, R.string.font_medium, DiscoverUi.INK);
             all.setGravity(Gravity.CENTER);
             all.setPadding(ui.px(14), 0, ui.px(14), 0);
             all.setFocusable(true);
@@ -287,13 +294,15 @@ public class TitleActivity extends Activity {
                 all.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(ui.ms(160)).start();
             });
             all.setOnClickListener(v -> showWhere());
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(32));
-            lp.leftMargin = ui.px(also.isEmpty() ? 0 : 12);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(40));
+            lp.leftMargin = ui.px(also.isEmpty() ? -14 : 18);   // alone, its words line up with "Watch on"
             row.addView(all, lp);
             LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-2, -2);
-            rlp.topMargin = ui.px(16);
+            rlp.topMargin = ui.px(8);
             column.addView(row, rlp);
         }
+        // "Watch trailer" comes after Also on, when there is one
+        if (!d.trailer.isEmpty()) column.addView(trailerRow());
         showSections(d);
         watchButton.requestFocus();
     }
@@ -375,6 +384,7 @@ public class TitleActivity extends Activity {
                 for (Discover.Hit m : keep) {
                     LinearLayout card = ui.card(m.picture(), m.name, 200,
                             v -> startActivity(intent(this, m.kind, m.id, m.name, m.backdrop)));
+                    ui.markWhere(card, m.kind, m.id);
                     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(200), -2);
                     lp.rightMargin = ui.px(16);
                     r.addView(card, lp);
@@ -445,7 +455,7 @@ public class TitleActivity extends Activity {
         ui.focusBare(t, 1.06f);
         t.setOnClickListener(v -> trailer());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
-        lp.topMargin = ui.px(6);
+        lp.topMargin = ui.px(10);
         lp.leftMargin = -ui.px(16);   // the words line up with "Watch on"; the pill's padding sits outside
         t.setLayoutParams(lp);
         return t;
@@ -639,9 +649,8 @@ public class TitleActivity extends Activity {
     /** Every way to watch in India, grouped; each row opens the app, gets it, or searches Google TV. */
     private void showWhere() {
         sheet = ui.new Sheet(root, scroll, getString(R.string.dc_where), getString(R.string.dc_where_sub));
-        int[] labels = {R.string.dc_stream, R.string.dc_rent, R.string.dc_buy, R.string.dc_free};
-        List<List<Discover.Provider>> groups = java.util.Arrays.asList(details.where.stream, details.where.rent,
-                details.where.buy, details.where.free);
+        int[] labels = {R.string.dc_stream, R.string.dc_free, R.string.dc_rent, R.string.dc_buy};
+        List<List<Discover.Provider>> groups = Discover.optionGroups(details.where);
         View first = null;
         for (int g = 0; g < groups.size(); g++) {
             if (groups.get(g).isEmpty()) continue;
@@ -649,7 +658,7 @@ public class TitleActivity extends Activity {
             for (Discover.Provider p : groups.get(g)) {
                 String pkg = Discover.packageFor(p.id);
                 String value = getString(pkg == null ? R.string.dc_search_it : installed.contains(pkg) ? R.string.dc_open : R.string.dc_get_app);
-                View row = sheet.row(ui.providerLogo(p, 46, 26), p.name, value, v -> {
+                View row = sheet.row(ui.glyph(p), p.name, value, v -> {   // Home's bare app symbol, as on the page
                     if (!Watch.watch(this, p, installed, name, links.get(p.id))) {
                         Toast.makeText(this, getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
                     }
@@ -677,6 +686,13 @@ public class TitleActivity extends Activity {
         t.setMaxLines(2);
         t.setLetterSpacing(-0.01f);
         ui.sizeTitle(t, s);
+        return t;
+    }
+
+    /** "Watch on" and "Also on": one style and width, so the app symbols after them line up. */
+    private TextView label(String s) {
+        TextView t = ui.text(s, 15, R.string.font_medium, DiscoverUi.INK_SOFT);
+        t.setMinWidth(ui.px(66));
         return t;
     }
 

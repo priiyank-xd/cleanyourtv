@@ -302,8 +302,19 @@ final class HomePane implements DiscoverActivity.Pane {
         });
     }
 
+    /** Titles already on the page (hero, New, your lists), so a later shelf doesn't show them again. */
+    private final java.util.Set<String> onPage = new java.util.HashSet<>();
+
+    /** Of {@code hits}, the ones not on the page yet, now counted as on it. */
+    private List<Discover.Hit> unseen(List<Discover.Hit> hits) {
+        List<Discover.Hit> out = new ArrayList<>();
+        for (Discover.Hit h : hits) if (onPage.add(h.kind + h.id)) out.add(h);
+        return out;
+    }
+
     private void build() {
         loading = false;
+        onPage.clear();
         List<Discover.Hit> empty = new ArrayList<>();
         heroes.clear();
         heroes.addAll(Discover.merge(heroMovies == null ? empty : heroMovies, heroTv == null ? empty : heroTv, HERO_COUNT));
@@ -336,14 +347,18 @@ final class HomePane implements DiscoverActivity.Pane {
         }
         hero = 0;
         if (!heroes.isEmpty()) showHero(0);
+        unseen(heroes);
 
         if (!top.isEmpty()) topTen(top);
         browse();
-        List<Tmdb.Title> fresh = feed.newThisWeek();
+        List<Tmdb.Title> fresh = new ArrayList<>();
+        for (Tmdb.Title t : feed.newThisWeek()) if (onPage.add(t.kind + t.id)) fresh.add(t);   // not those in the hero
         if (!fresh.isEmpty()) {
             LinearLayout row = shelf(act.getString(R.string.dc_new_on_apps));
             for (Tmdb.Title t : fresh) {
-                row.addView(ui.card(t.backdrop, t.name, 200, v -> openTitle(t.kind, t.id, t.name, t.backdrop)), cardLp());
+                LinearLayout card = ui.card(t.backdrop, t.name, 200, v -> openTitle(t.kind, t.id, t.name, t.backdrop));
+                ui.markWhere(card, t.kind, t.id);
+                row.addView(card, cardLp());
             }
         }
         savedShelves();
@@ -573,6 +588,7 @@ final class HomePane implements DiscoverActivity.Pane {
             FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(ui.px(92), ui.px(138), Gravity.BOTTOM | Gravity.START);
             plp.leftMargin = ui.px(i + 1 >= 10 ? 78 : 52);
             item.addView(poster, plp);
+            ui.markWhere(poster, h.kind, h.id);
             ui.focusArt(item, poster, 12);
             View.OnFocusChangeListener lift = item.getOnFocusChangeListener();
             item.setOnFocusChangeListener((v, has) -> {
@@ -607,19 +623,23 @@ final class HomePane implements DiscoverActivity.Pane {
             int at = 0;
             if (list != null && !list.isEmpty()) {
                 Taste.get(act).listed(list);
+                for (Discover.Hit h : list) onPage.add(h.kind + h.id);   // your list shows all of its titles
                 at = shelfAt(at, act.getString(R.string.dc_watch_later), list);
                 Discover.Hit last = list.get(0);
                 int after = at;
                 net.details(last.kind, last.id, d -> {
-                    if (d == null || d.more.isEmpty() || act.isDestroyed()) return;
-                    shelfAt(after, act.getString(R.string.dc_because, last.name), d.more);
+                    if (d == null || act.isDestroyed()) return;
+                    List<Discover.Hit> more = unseen(d.more);
+                    if (!more.isEmpty()) shelfAt(after, act.getString(R.string.dc_because, last.name), more);
                 });
             }
             int recAt = at;
             net.recommended(a, recs -> {
                 if (recs == null || recs.isEmpty() || act.isDestroyed()) return;
                 streamingHere(recs.subList(0, Math.min(20, recs.size())), keep -> {
-                    if (!keep.isEmpty() && !act.isDestroyed()) shelfAt(recAt, act.getString(R.string.dc_recommended), keep);
+                    if (act.isDestroyed()) return;
+                    keep = unseen(keep);
+                    if (!keep.isEmpty()) shelfAt(recAt, act.getString(R.string.dc_recommended), keep);
                 });
             });
         });
@@ -650,7 +670,9 @@ final class HomePane implements DiscoverActivity.Pane {
         int before = shelves.getChildCount();
         LinearLayout row = shelf(label);
         for (Discover.Hit h : hits) {
-            row.addView(ui.card(h.picture(), h.name, 200, v -> openTitle(h.kind, h.id, h.name, h.backdrop)), cardLp());
+            LinearLayout card = ui.card(h.picture(), h.name, 200, v -> openTitle(h.kind, h.id, h.name, h.backdrop));
+            ui.markWhere(card, h.kind, h.id);
+            row.addView(card, cardLp());
         }
         // shelf() added a title and a row at the end: move both to index
         View title = shelves.getChildAt(before), rowView = shelves.getChildAt(before + 1);

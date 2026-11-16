@@ -246,6 +246,7 @@ final class ListsPane implements DiscoverActivity.Pane {
                 Discover.Hit h = items.get(i);
                 LinearLayout card = ui.card(h.picture(), h.name, CARD_W,
                         v -> act.startActivity(TitleActivity.intent(act, h.kind, h.id, h.name, h.backdrop)));
+                ui.markWhere(card, h.kind, h.id);
                 // Left from the first column goes back to the chosen list's name
                 if (i % COLUMNS == 0 && chosenView != null) card.setNextFocusLeftId(chosenView.getId());
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(CARD_W), -2);

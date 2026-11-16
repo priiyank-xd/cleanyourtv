@@ -73,10 +73,11 @@
     <string name="hub_not_available" translatable="false">Not available on this projector</string>
     <string name="screensaver_state" translatable="false">Screensaver: %1$s</string>
     <string name="screensaver_label" translatable="false">Screensaver</string>
+    <string name="settings_animations" translatable="false">Animations</string>
     <string name="screensaver_photos_clock" translatable="false">Photos and clock</string>
     <string name="screensaver_system_default" translatable="false">Google TV default</string>
     <string name="screensaver_needs_permission" translatable="false">Grant WRITE_SECURE_SETTINGS over ADB first</string>
-    <string name="lg_tmdb_notice" translatable="false">New this week and Trending come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
+    <string name="lg_tmdb_notice" translatable="false">Titles, pictures and New this week come from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB. Where to watch is from JustWatch. IMDb and Rotten Tomatoes scores come from OMDb.</string>
     <!-- Fork: Discover, the launcher's own search and title pages. -->
     <string name="dc_search_hint" translatable="false">Movies and shows</string>
     <string name="dc_clear_recent" translatable="false">Clear</string>
@@ -181,6 +182,9 @@
     <string name="dc_list_empty" translatable="false">Nothing here yet. Use + on a title to add it.</string>
     <string name="dc_because" translatable="false">Because you saved %1$s</string>
     <string name="hub_tmdb" translatable="false">TMDB account</string>
+    <string name="hub_accounts" translatable="false">Accounts</string>
+    <string name="hub_google_account" translatable="false">Google account</string>
+    <string name="hub_google_account_sub" translatable="false">Google TV \u00b7 Accounts and sign-in</string>
     <string name="hub_tmdb_off" translatable="false">Not connected \u00b7 for Watch later and lists</string>
     <string name="dc_ask" translatable="false">Ask Gemini: \u201c%1$s\u201d</string>
     <string name="dc_asking" translatable="false">Asking Gemini\u2026</string>

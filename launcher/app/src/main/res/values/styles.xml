@@ -35,25 +35,37 @@
         <item name="android:drawablePadding">0dp</item>
     </style>
 
+    <!-- Fork: a row as in the Settings panel: bare at rest, glass while focused; a title with an optional dim
+         second line (LauncherSettingsActivity.twoLines). -->
     <style name="SettingsRow">
         <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">52dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">48dp</item>
         <item name="android:gravity">center_vertical</item>
-        <item name="android:paddingStart">14dp</item>
-        <item name="android:paddingEnd">18dp</item>
-        <item name="android:drawablePadding">14dp</item>
-        <item name="android:background">@drawable/settings_choice_bg</item>
-        <item name="android:textColor">@color/settings_choice_text</item>
-        <item name="android:textSize">17sp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:drawablePadding">12dp</item>
+        <item name="android:background">@drawable/settings_row_bg</item>
+        <item name="android:textColor">#FFFFFFFF</item>
+        <item name="android:textSize">15sp</item>
         <item name="android:focusable">true</item>
         <item name="android:clickable">true</item>
     </style>
+    <!-- A choice among a few: the panel's chips (a chosen one is a white pill). -->
     <style name="SettingsColumnChoice" parent="SettingsRow">
         <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:minHeight">0dp</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:layout_marginEnd">10dp</item>
-        <item name="android:paddingStart">18dp</item>
-        <item name="android:textSize">16sp</item>
+        <item name="android:layout_marginEnd">8dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingTop">0dp</item>
+        <item name="android:paddingBottom">0dp</item>
+        <item name="android:background">@drawable/settings_choice_bg</item>
+        <item name="android:textColor">@color/settings_choice_text</item>
+        <item name="android:textSize">13sp</item>
         <item name="android:gravity">center</item>
     </style>
     <!-- A small caps header that opens each group on the Launcher settings page, as in the Settings panel.
@@ -61,9 +73,11 @@
     <style name="SettingsSection">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">36dp</item>
+        <item name="android:layout_marginTop">14dp</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:layout_marginStart">12dp</item>
         <item name="android:textColor">#80FFFFFF</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textSize">11sp</item>
         <item name="android:textAllCaps">true</item>
         <item name="android:letterSpacing">0.16</item>
         <item name="android:tag">medium</item>

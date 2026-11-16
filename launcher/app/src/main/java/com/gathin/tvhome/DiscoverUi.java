@@ -334,6 +334,7 @@ final class DiscoverUi {
         card.setClipChildren(false);
         card.setClipToPadding(false);
         FrameLayout pic = art(picture, w, w * 9 / 16, 12);
+        if (picture == null || picture.isEmpty()) noPicture(pic, name, 15);
         card.addView(pic, new LinearLayout.LayoutParams(px(w), px(w * 9 / 16)));
         TextView t = text(name, 13, R.string.font_medium, INK_SOFT);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(w), -2);
@@ -347,6 +348,50 @@ final class DiscoverUi {
         focusArt(card, pic, 12);
         card.setOnClickListener(open);
         return card;
+    }
+
+    /** A title TMDB has no picture for: its name on a soft colour of its own, never an empty grey box. */
+    void noPicture(FrameLayout box, String name, float size) {
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, tones(name == null ? "" : name));
+        bg.setCornerRadius(px(12));
+        box.setBackground(bg);
+        TextView t = text(name == null ? "" : name, size, R.string.font_medium, INK);
+        t.setSingleLine(false);
+        t.setMaxLines(3);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(px(14), 0, px(14), 0);
+        box.addView(t, 0, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    /**
+     * The app it streams on, in a picture's top-right corner: Home's bare symbol over a soft shadow (no badge
+     * around it). Your installed app when one streams it, else one to get, shown dimmer; nothing when no app does.
+     * TMDB's answer is kept a day, so a card asks once.
+     */
+    void markWhere(LinearLayout card, String kind, int id) {
+        if (card.getChildCount() > 0 && card.getChildAt(0) instanceof FrameLayout) markWhere((FrameLayout) card.getChildAt(0), kind, id);
+    }
+
+    void markWhere(FrameLayout pic, String kind, int id) {
+        if (id <= 0 || !("movie".equals(kind) || "tv".equals(kind))) return;
+        DiscoverNet.get(act).answer(Discover.providersUrl(kind, id), 24 * DiscoverNet.HOURS, a -> {
+            if (a == null || act.isDestroyed()) return;
+            Discover.Availability where = Discover.parseAvailability(a.json);
+            java.util.Set<String> installed = Watch.installed(act, Watch.packages(where));
+            java.util.List<Discover.Provider> apps = Discover.apps(where, installed, 1);
+            if (apps.isEmpty()) return;
+            Discover.Provider p = apps.get(0);
+            FrameLayout corner = new FrameLayout(act);
+            GradientDrawable shade = new GradientDrawable();
+            shade.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+            shade.setColors(new int[]{0x8C000000, 0x40000000, 0x00000000});
+            shade.setGradientRadius(px(22));
+            corner.setBackground(shade);
+            ImageView g = glyph(p);
+            if (!installed.contains(Discover.packageFor(p.id))) g.setAlpha(0.6f);
+            corner.addView(g, new FrameLayout.LayoutParams(px(18), px(18), Gravity.CENTER));
+            pic.addView(corner, new FrameLayout.LayoutParams(px(44), px(44), Gravity.TOP | Gravity.END));
+        });
     }
 
     /** A portrait poster with rounded corners (TMDB w342), filled when it arrives. */
@@ -632,14 +677,34 @@ final class DiscoverUi {
         glyph.setImageDrawable(Glyphs.get(act, Discover.packageFor(p.id), p.name));
         b.addView(glyph, new FrameLayout.LayoutParams(px(34), px(34), Gravity.CENTER));
         b.setContentDescription(act.getString(installed ? R.string.dc_watch_on : R.string.dc_get, p.name));
-        // app symbols stay bare even when focused: they grow and brighten, no pill
+        // app symbols stay bare even when focused (no pill): they grow, brighten and a soft light glows behind them
         b.setFocusable(true);
         b.setClickable(true);
         b.setAlpha(0.7f);
-        b.setOnFocusChangeListener((x, has) -> x.animate().alpha(has ? 1f : 0.7f)
-                .scaleX(has ? 1.3f : 1f).scaleY(has ? 1.3f : 1f).setDuration(ms(180)).start());
+        b.setOnFocusChangeListener((x, has) -> {
+            x.setBackground(has ? halo(24) : null);
+            x.animate().alpha(has ? 1f : 0.7f).scaleX(has ? 1.3f : 1f).scaleY(has ? 1.3f : 1f).setDuration(ms(180)).start();
+        });
         b.setOnClickListener(click);
         return b;
+    }
+
+    /** A soft round light, brightest in the middle and gone at {@code radius}: the focus behind a bare symbol. */
+    Drawable halo(float radius) {
+        GradientDrawable g = new GradientDrawable();
+        g.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        g.setColors(new int[]{0x52FFFFFF, 0x1FFFFFFF, 0x00FFFFFF});
+        g.setGradientRadius(px(radius));
+        return g;
+    }
+
+    /** An app's bare symbol from Home's dock, not focusable: for "Also on" and the corner of a title card. */
+    ImageView glyph(Discover.Provider p) {
+        ImageView img = new ImageView(act);
+        img.setImageDrawable(Glyphs.get(act, Discover.packageFor(p.id), p.name));
+        img.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        img.setContentDescription(p.name);
+        return img;
     }
 
     /** A capsule of text that is glass, brighter while focused. */

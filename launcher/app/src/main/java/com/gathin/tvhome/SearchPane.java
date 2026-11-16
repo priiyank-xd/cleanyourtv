@@ -27,7 +27,8 @@ import java.util.Set;
 
 /**
  * Discover's Search tab (fork only). The field takes focus with the TV's own keyboard (Gboard on Google TV) up, so
- * typing or the keyboard's mic starts at once. Results follow the typing: people first, then titles; the first row
+ * typing or the keyboard's mic starts at once. Results follow the typing: titles, and well-known people (first when
+ * the query names one); the first row
  * sits above the keyboard, and Search on the keyboard closes it and moves to the results. An empty field shows
  * recent searches and what's popular on your apps.
  */
@@ -94,6 +95,11 @@ final class SearchPane implements DiscoverActivity.Pane {
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipToPadding(false);
         scroll.setClipChildren(false);
+        // results scroll under a clean edge below the field, never drawn over it: the page doesn't clip its
+        // children, so the scroller clips its own drawing to its box (the content's padding leaves room for a
+        // focused card to grow)
+        scroll.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) ->
+                v.setClipBounds(new android.graphics.Rect(0, 0, r - l, b - t)));
         scroll.setVerticalFadingEdgeEnabled(true);
         scroll.setFadingEdgeLength(ui.px(24));
         content = new LinearLayout(act);
@@ -182,7 +188,7 @@ final class SearchPane implements DiscoverActivity.Pane {
                 gap(26);
                 popular();   // what was saved last time, so the page is never empty
             } else {
-                showResults(q, Discover.parsePeople(answer, MAX_PEOPLE), Discover.parseSearch(answer, Discover.MAX_RESULTS));
+                showResults(q, answer);
             }
         });
     }
@@ -243,34 +249,52 @@ final class SearchPane implements DiscoverActivity.Pane {
         popular();
     }
 
-    private void showResults(String q, List<Discover.Hit> people, List<Discover.Hit> titles) {
+    /**
+     * Results: when the query names a well-known person ("shah rukh"), them first and their best known titles at the
+     * head of the titles; otherwise titles first and only well-known people after them, so "dune" shows the films,
+     * not people who happen to be called Dune.
+     */
+    private void showResults(String q, org.json.JSONObject answer) {
         clear();
         askOffer(q);
+        List<Discover.Hit> found = Discover.parseSearch(answer, Discover.MAX_RESULTS);
+        List<Discover.Hit> people = Discover.shownPeople(Discover.parsePeople(answer, 20), !found.isEmpty());
+        if (people.size() > MAX_PEOPLE) people = new ArrayList<>(people.subList(0, MAX_PEOPLE));
+        Discover.Hit lead = Discover.leadingPerson(people, q);
+        List<Discover.Hit> titles = Discover.rankTitles(
+                lead == null ? new ArrayList<>() : Discover.knownFor(answer, lead.id), found, Discover.MAX_RESULTS);
         if (people.isEmpty() && titles.isEmpty()) {
             label(act.getString(R.string.dc_nothing, q), null);
             gap(14);
             popular();
             return;
         }
-        if (!people.isEmpty()) {
-            label(act.getString(R.string.dc_people), null);
-            LinearLayout row = shelfRow();
-            for (Discover.Hit p : people) {
-                View item = person(p);
-                item.setNextFocusUpId(field.getId());
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
-                lp.rightMargin = ui.px(30);
-                row.addView(item, lp);
-                if (firstResult == null) firstResult = item;
-            }
-            gap(24);
-        }
+        if (lead != null) peopleRow(people);
         if (!titles.isEmpty()) {
             label(act.getString(R.string.dc_titles), act.getResources().getQuantityString(R.plurals.dc_count, titles.size(), titles.size()));
             List<Item> items = new ArrayList<>();
             for (Discover.Hit h : titles) items.add(item(h));
             grid(items);
         }
+        if (lead == null && !people.isEmpty()) {
+            gap(4);
+            peopleRow(people);
+        }
+    }
+
+    private void peopleRow(List<Discover.Hit> people) {
+        label(act.getString(R.string.dc_people), null);
+        boolean first = firstResult == null;
+        LinearLayout row = shelfRow();
+        for (Discover.Hit p : people) {
+            View item = person(p);
+            if (first) item.setNextFocusUpId(field.getId());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+            lp.rightMargin = ui.px(30);
+            row.addView(item, lp);
+            if (firstResult == null) firstResult = item;
+        }
+        gap(24);
     }
 
     // ---- Ask in plain words ----
@@ -520,6 +544,7 @@ final class SearchPane implements DiscoverActivity.Pane {
             }
             Item it = items.get(i);
             LinearLayout card = ui.card(it.picture, it.name, it.sub, CARD_W, v -> open(it));
+            ui.markWhere(card, it.kind, it.id);
             card.setId(View.generateViewId());
             if (firstRow && i < COLUMNS) card.setNextFocusUpId(field.getId());
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(CARD_W), -2);

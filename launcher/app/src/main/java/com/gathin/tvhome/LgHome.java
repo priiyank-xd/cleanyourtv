@@ -298,8 +298,12 @@ final class LgHome {
             return true;
         }
         if (reordering) { reorderMove(dir); return true; }
-        if (focus.equals("feat") && dir == LgNav.LEFT && slide > 0) { showSlide(slide - 1); return true; }
-        if (focus.equals("feat") && dir == LgNav.RIGHT && slide < slides.size() - 1) { showSlide(slide + 1); return true; }
+        // Fork: Left pages the feature card back (round to the last slide); Right always moves on to Quick settings,
+        // so leaving the card is one press, never one per slide.
+        if (focus.equals("feat") && dir == LgNav.LEFT && slides.size() > 1) {
+            showSlide((slide - 1 + slides.size()) % slides.size());
+            return true;
+        }
         setFocus(LgNav.next(focus, dir, bandCount(), chips.size(), QUICK, first));
         return true;
     }
@@ -697,11 +701,21 @@ final class LgHome {
             logo.setScaleType(ImageView.ScaleType.FIT_START);
             place(s, logo, 28, 48, 150, 42);
         }
-        TextView title = text(t.name, 30, R.string.font_light, 0xFFFFFFFF);
-        place(s, title, 30, 104, 420, -1);
+        // Fork: a long name gets two lines a size smaller, instead of being cut ("The Lord of the Rings: The Rin…")
+        boolean longName = t.name.length() > 26;
+        LinearLayout words = new LinearLayout(act);
+        words.setOrientation(LinearLayout.VERTICAL);
+        TextView title = text(t.name, longName ? 24 : 30, R.string.font_light, 0xFFFFFFFF);
+        title.setSingleLine(false);
+        title.setMaxLines(2);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        words.addView(title, new LinearLayout.LayoutParams(-1, -2));
         String sub = act.getString("movie".equals(t.kind) ? R.string.lg_movie : R.string.lg_series)
                 + (on != null ? " \u00b7 " + act.getString(R.string.lg_on_app, on.label) : "");
-        place(s, text(sub, 14, R.string.font_regular, 0xB8FFFFFF), 30, 146, 420, -1);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
+        sp.topMargin = px(8);
+        words.addView(text(sub, 14, R.string.font_regular, 0xB8FFFFFF), sp);
+        place(s, words, 30, longName ? 94 : 104, 420, -1);
         LinearLayout btn = new LinearLayout(act);
         btn.setGravity(Gravity.CENTER_VERTICAL);
         btn.setBackground(glass(20, false));
@@ -1246,12 +1260,17 @@ final class LgHome {
         }
         if (focus.equals("top0")) { openSearch(false); return; }
         if (focus.equals("top1")) { openSettings(false); return; }
-        if (focus.equals("top2")) { start(SystemSettings.profileIntent(act)); return; }
+        if (focus.equals("top2")) { start(SettingsHubActivity.accounts(act)); return; }
         if (focus.equals("clock")) { start(new Intent(act, ClockActivity.class)); return; }
         if (focus.equals("w1")) {
-            // First OK opens peek mode; OK there opens the title shown (Discover, or Google TV's search).
+            // With Discover, OK opens the title's page at once. With Google TV, the first OK opens peek mode (a
+            // look before leaving Home) and OK there hands the title to Google TV's search.
             List<Tmdb.Title> list = feed.newThisWeek();
             if (list.isEmpty()) return;
+            if (!newOpen && HubChoices.searchOpensDiscover(Config.lgSearchButton(act), false)) {
+                openTitle(list.get(Math.min(newIndex, list.size() - 1)));
+                return;
+            }
             if (!newOpen) { openNew(); return; }
             closeNew(false);
             openTitle(list.get(Math.min(newIndex, list.size() - 1)));
@@ -1308,18 +1327,14 @@ final class LgHome {
 
     /** Fork: OK on a TMDB title on Home: its page in Discover, or Google TV's search for it, following Search. */
     private void openTitle(Tmdb.Title t) {
-        if (HubChoices.searchOpensDiscover(Config.lgSearchButton(act), false)) {
-            start(TitleActivity.intent(act, t.kind, t.id, t.name, t.backdrop));
-        } else {
-            search(t.name);
-        }
+        boolean discover = HubChoices.searchOpensDiscover(Config.lgSearchButton(act), false);
+        // Google TV's search when chosen and there; else (or when the TV has none) the title's page in Discover
+        if (discover || !Watch.googleSearch(act, t.name)) start(TitleActivity.intent(act, t.kind, t.id, t.name, t.backdrop));
     }
 
-    /** Google TV search (Gemini on newer firmware), for a title when one is given: where to watch, ratings, watchlist. */
+    /** Google TV search (Gemini on newer firmware); Discover's Search when the TV has no Google search. */
     private void search(String query) {
-        if (!Watch.googleSearch(act, query)) {
-            android.widget.Toast.makeText(act, R.string.lg_search_unavailable, android.widget.Toast.LENGTH_SHORT).show();
-        }
+        if (!Watch.googleSearch(act, query)) start(DiscoverActivity.intent(act, DiscoverActivity.TAB_SEARCH));
     }
 
     private boolean start(Intent i) {

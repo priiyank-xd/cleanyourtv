@@ -24,7 +24,7 @@ final class Glyphs {
     private static final Map<String, Integer> BY_PACKAGE = new HashMap<>();
     /** Label words, checked in order (more specific first). */
     private static final String[][] BY_LABEL = {
-            {"netflix", "netflix"}, {"prime video", "primevideo"}, {"hotstar", "jiohotstar"},
+            {"netflix", "netflix"}, {"prime video", "primevideo"}, {"amazon", "primevideo"}, {"google play", "playstore"}, {"hotstar", "jiohotstar"},
             {"youtube music", "ytmusic"}, {"youtube kids", "ytkids"}, {"smarttube", "smarttube"},
             {"youtube", "youtube"}, {"spotify", "spotify"}, {"zee5", "zee5"}, {"sonyliv", "sonyliv"},
             {"mx player", "mxplayer"}, {"plex", "plex"}, {"apple tv", "appletv"}, {"play store", "playstore"},

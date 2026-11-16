@@ -88,7 +88,9 @@ public class DiscoverTest {
         assertEquals(8, Discover.primary(a, Collections.emptyList()).id);   // none installed: offer the first to get
         assertNull(Discover.primary(new Discover.Availability(), Collections.emptyList()));
         List<Discover.Provider> also = Discover.others(a, Collections.singletonList(Discover.primary(a, Collections.emptyList())), 3);
-        assertEquals(Arrays.asList(350, 119, 11), Arrays.asList(also.get(0).id, also.get(1).id, also.get(2).id));
+        // Also on is only where to rent or buy: streaming and free apps belong to Watch on
+        assertEquals(Collections.singletonList(119), Arrays.asList(also.get(0).id));
+        assertEquals(1, also.size());
     }
 
     @Test public void alsoOnShowsEachAppOnce() throws Exception {
@@ -111,6 +113,23 @@ public class DiscoverTest {
         assertEquals(2, apps.size());
         assertEquals(1, Discover.apps(a, Collections.emptyList(), 1).size());
         assertTrue(Discover.apps(new Discover.Availability(), Collections.emptyList(), 3).isEmpty());
+    }
+
+    @Test public void watchOnTakesFreeAppsAndAlsoOnRentOrBuyEachAppOnce() throws Exception {
+        Discover.Availability a = Discover.parseDetails(new JSONObject("{\"id\":5,\"title\":\"Y\","
+                + "\"watch/providers\":{\"results\":{\"IN\":{\"flatrate\":[{\"provider_id\":8,\"provider_name\":\"Netflix\"}],"
+                + "\"free\":[{\"provider_id\":2336,\"provider_name\":\"JioHotstar\"}],"
+                + "\"rent\":[{\"provider_id\":10,\"provider_name\":\"Amazon Video\"},{\"provider_id\":119,\"provider_name\":\"Amazon Prime Video\"}],"
+                + "\"buy\":[{\"provider_id\":2,\"provider_name\":\"Apple TV\"}]}}}}"), "movie").where;
+        List<Discover.Provider> apps = Discover.apps(a, Collections.emptyList(), 3);
+        assertEquals(Arrays.asList(8, 2336), Arrays.asList(apps.get(0).id, apps.get(1).id));
+        List<Discover.Provider> also = Discover.others(a, apps, 3);
+        assertEquals(Arrays.asList(10, 2), Arrays.asList(also.get(0).id, also.get(1).id));   // Amazon Video and Prime once
+        assertEquals(2, also.size());
+        // only for rent: Watch on still leads to an app
+        Discover.Availability rentOnly = new Discover.Availability();
+        rentOnly.rent.addAll(a.rent);
+        assertEquals(10, Discover.apps(rentOnly, Collections.emptyList(), 3).get(0).id);
     }
 
     @Test public void indiaChartComesFromJustWatchWithTmdbIds() throws Exception {

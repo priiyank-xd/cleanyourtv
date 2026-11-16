@@ -29,6 +29,7 @@ final class Discover {
     static {
         EXTRA_PACKAGES.put(192, "com.google.android.youtube.tv");
         EXTRA_PACKAGES.put(2100, "com.amazon.amazonvideo.livingroom");   // Amazon Prime Video with Ads
+        EXTRA_PACKAGES.put(10, "com.amazon.amazonvideo.livingroom");     // Amazon Video: rent and buy, in the Prime Video app
     }
 
     /** Results the search screen keeps. */
@@ -124,6 +125,73 @@ final class Discover {
             if (h != null && !h.isPerson()) out.add(h);
         }
         return out;
+    }
+
+    /** How popular (TMDB) a person must be to be shown in search: well known, not someone who only shares a word. */
+    static final double KNOWN_PERSON = 3;
+
+    /** Every word of {@code query} starts a word of {@code name} ("shah rukh" and Shah Rukh Khan), ignoring case. */
+    static boolean namesMatch(String name, String query) {
+        String[] words = norm(name).split(" "), asked = norm(query).split(" ");
+        if (asked.length == 0 || asked[0].isEmpty()) return false;
+        for (String a : asked) {
+            boolean found = false;
+            for (String w : words) found |= w.startsWith(a);
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    private static String norm(String s) {
+        return s == null ? "" : s.toLowerCase(java.util.Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
+    }
+
+    /** The well-known person the query names ("shah rukh"), or null: then titles come first in the results. */
+    static Hit leadingPerson(List<Hit> people, String query) {
+        for (Hit p : people) if (p.popularity >= KNOWN_PERSON && namesMatch(p.name, query)) return p;
+        return null;
+    }
+
+    /** People worth showing for a query: the well known ones; all of them when there are no titles at all. */
+    static List<Hit> shownPeople(List<Hit> people, boolean anyTitles) {
+        if (!anyTitles) return people;
+        List<Hit> out = new ArrayList<>();
+        for (Hit p : people) if (p.popularity >= KNOWN_PERSON) out.add(p);
+        return out;
+    }
+
+    /** What a person in a search answer is known for (TMDB's known_for), as titles. */
+    static List<Hit> knownFor(JSONObject answer, int personId) {
+        List<Hit> out = new ArrayList<>();
+        JSONArray results = answer == null ? null : answer.optJSONArray("results");
+        if (results == null) return out;
+        for (int i = 0; i < results.length(); i++) {
+            JSONObject r = results.optJSONObject(i);
+            if (r == null || r.optInt("id") != personId || !"person".equals(r.optString("media_type"))) continue;
+            JSONArray known = r.optJSONArray("known_for");
+            for (int k = 0; known != null && k < known.length(); k++) {
+                Hit h = hit(known.optJSONObject(k), null);
+                if (h != null && !h.isPerson()) out.add(h);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Search's titles in the order shown: {@code first} (a named person's best known) ahead, then the rest; titles
+     * with a picture before ones without, each group in TMDB's order; no repeats, at most {@code max}.
+     */
+    static List<Hit> rankTitles(List<Hit> first, List<Hit> rest, int max) {
+        List<Hit> out = new ArrayList<>(), bare = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (List<Hit> group : java.util.Arrays.asList(first, rest)) {
+            for (Hit h : group) {
+                if (!seen.add(h.kind + h.id)) continue;
+                (h.picture().isEmpty() ? bare : out).add(h);
+            }
+        }
+        out.addAll(bare);
+        return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
     }
 
     /** The people of a search answer, in TMDB's order, at most {@code max}. */
@@ -423,11 +491,21 @@ final class Discover {
         List<String> out = new ArrayList<>();
         String t = q == null ? "" : q.trim();
         if (!t.isEmpty()) out.add(t);
+        String low = t.toLowerCase(java.util.Locale.ROOT);
         for (String r : recent) {
             if (out.size() >= max) break;
-            if (!r.trim().isEmpty() && !r.trim().equalsIgnoreCase(t)) out.add(r.trim());
+            String old = r.trim(), o = old.toLowerCase(java.util.Locale.ROOT);
+            // the same search again, or one a key apart ("tom holland movies" and "tom holland moviesq"): keep the new one
+            if (old.isEmpty() || o.equals(low) || (!low.isEmpty() && nearlySame(o, low))) continue;
+            out.add(old);
         }
         return out;
+    }
+
+    /** One starts with the other and they differ by at most two letters: a typo or a word still being typed. */
+    private static boolean nearlySame(String a, String b) {
+        String longer = a.length() >= b.length() ? a : b, shorter = longer == a ? b : a;
+        return shorter.length() >= 3 && longer.startsWith(shorter) && longer.length() - shorter.length() <= 2;
     }
 
     static List<String> splitRecent(String saved) {
@@ -612,34 +690,57 @@ final class Discover {
     }
 
     /**
-     * Up to {@code max} streaming apps to watch on, one per app: installed ones first, then ones to get. Only
-     * providers with a known app; empty when none streams it.
+     * Up to {@code max} apps for "Watch on": the ways to watch with nothing more to pay, your subscription apps and
+     * free ones (with ads too), one per app, installed ones first. Only providers with a known app. When it is only
+     * for rent or to buy, those apps instead, so Watch still leads somewhere; empty when no app has it.
      */
     static List<Provider> apps(Availability a, Collection<String> installed, int max) {
+        List<Provider> out = onApps(java.util.Arrays.asList(a.stream, a.free), installed, max);
+        return out.isEmpty() ? onApps(java.util.Arrays.asList(a.rent, a.buy), installed, max) : out;
+    }
+
+    private static List<Provider> onApps(List<List<Provider>> groups, Collection<String> installed, int max) {
         List<Provider> mine = new ArrayList<>(), get = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
-        for (Provider p : a.stream) {
-            String pkg = packageFor(p.id);
-            if (pkg == null || !seen.add(pkg)) continue;
-            (installed.contains(pkg) ? mine : get).add(p);
+        for (List<Provider> group : groups) {
+            for (Provider p : group) {
+                String pkg = packageFor(p.id);
+                if (pkg == null || !seen.add(pkg)) continue;
+                (installed.contains(pkg) ? mine : get).add(p);
+            }
         }
         mine.addAll(get);
         return mine.size() > max ? new ArrayList<>(mine.subList(0, max)) : mine;
     }
 
     /**
-     * Up to {@code max} providers for the "Also on" line, besides the apps already {@code shown}: streaming first,
-     * then rent, buy and free. One per app, so Prime Video and "Prime Video with Ads" show once.
+     * Up to {@code max} providers for the "Also on" line: where to rent or buy it, besides the apps already
+     * {@code shown} after Watch on. One per app, so Prime Video, "Prime Video with Ads" and Amazon Video show once.
      */
     static List<Provider> others(Availability a, Collection<Provider> shown, int max) {
         List<Provider> out = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         for (Provider p : shown) seen.add(appKey(p.id));
-        for (List<Provider> group : java.util.Arrays.asList(a.stream, a.rent, a.buy, a.free)) {
+        for (List<Provider> group : java.util.Arrays.asList(a.rent, a.buy)) {
             for (Provider p : group) {
                 if (out.size() >= max) return out;
                 if (seen.add(appKey(p.id))) out.add(p);
             }
+        }
+        return out;
+    }
+
+    /**
+     * Every way to watch for the All options sheet, in the order Watch on and Also on use (stream, free, rent, buy):
+     * each app once, in the first group that has it, so Prime Video and its "with Ads" twin are one row.
+     */
+    static List<List<Provider>> optionGroups(Availability a) {
+        List<List<Provider>> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (List<Provider> group : java.util.Arrays.asList(a.stream, a.free, a.rent, a.buy)) {
+            List<Provider> keep = new ArrayList<>();
+            for (Provider p : group) if (seen.add(appKey(p.id))) keep.add(p);
+            out.add(keep);
         }
         return out;
     }

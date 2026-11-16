@@ -149,6 +149,7 @@ public class PersonActivity extends Activity {
         for (Discover.Hit h : hits) {
             LinearLayout card = ui.card(h.picture(), h.name, 200,
                     v -> startActivity(TitleActivity.intent(this, h.kind, h.id, h.name, h.backdrop)));
+            ui.markWhere(card, h.kind, h.id);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(200), -2);
             lp.rightMargin = ui.px(16);
             row.addView(card, lp);

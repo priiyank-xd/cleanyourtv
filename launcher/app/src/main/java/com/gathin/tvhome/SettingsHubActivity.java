@@ -36,8 +36,15 @@ public class SettingsHubActivity extends Activity {
     /** Liquid glass, as on Home: a light top-to-bottom gradient with a thin bright edge. */
     private static final int GLASS_TOP = 0x33FFFFFF, GLASS_BOTTOM = 0x0FFFFFFF, GLASS_EDGE = 0x3DFFFFFF;
     private static final String[] CLOCK_FORMATS = {"system", "12", "24"};
-    /** The sheet's dark base, 60% opaque (Launcher settings and its dialogs, settings_screen_bg, stay at 90%). */
-    private static final int SHEET_TINT = 0x9910141E;
+    /** The sheet's dark base, 70% opaque (Launcher settings and its dialogs, settings_screen_bg, stay at 90%). */
+    private static final int SHEET_TINT = 0xB310141E;
+
+    private static final String EXTRA_ACCOUNTS = "accounts";
+
+    /** Fork: Home's profile button: the same panel with just the accounts (Google and TMDB). */
+    static Intent accounts(android.content.Context ctx) {
+        return new Intent(ctx, SettingsHubActivity.class).putExtra(EXTRA_ACCOUNTS, true);
+    }
 
     private float u;
     private SharedPreferences choices;
@@ -58,7 +65,7 @@ public class SettingsHubActivity extends Activity {
 
         LinearLayout pane = new LinearLayout(this);
         pane.setOrientation(LinearLayout.VERTICAL);
-        // A floating glass panel over the dimmed Home: more opaque than Home's cards (60% vs 40%) so its text
+        // A floating glass panel over the dimmed Home: more opaque than Home's cards (70% vs 40%) so its text
         // stays readable over them.
         GradientDrawable tint = new GradientDrawable();
         tint.setColor(SHEET_TINT);
@@ -73,7 +80,8 @@ public class SettingsHubActivity extends Activity {
         paneLp.setMargins(0, px(16), px(16), px(16));
         root.addView(pane, paneLp);
 
-        TextView title = text(getString(R.string.hub_title), 22, R.string.font_medium, ROW_TEXT);
+        boolean accountsOnly = getIntent().getBooleanExtra(EXTRA_ACCOUNTS, false);
+        TextView title = text(getString(accountsOnly ? R.string.hub_accounts : R.string.hub_title), 22, R.string.font_medium, ROW_TEXT);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
         titleLp.setMargins(px(28), px(26), px(28), px(8));   // no subtitle: the section headers say what's here
         pane.addView(title, titleLp);
@@ -90,6 +98,17 @@ public class SettingsHubActivity extends Activity {
         list.setClipChildren(false);   // room for the focused row's glow
         scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
         pane.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        if (accountsOnly) {
+            actionRow(list, R.drawable.ic_lg_profile, R.string.hub_google_account, R.string.hub_google_account_sub,
+                    v -> open(SystemSettings.profileIntent(this)));
+            account = actionRow(list, R.drawable.ic_lg_profile, R.string.hub_tmdb, R.string.hub_tmdb_off,
+                    v -> open(new Intent(this, ConnectActivity.class)));
+            setContentView(root);
+            refresh();
+            rows.get(0).view.requestFocus();
+            return;
+        }
 
         // The picture and sound controls used most on a projector, then its connections. They come first: they are
         // what the menu is opened for day to day, where Home's look is set once.

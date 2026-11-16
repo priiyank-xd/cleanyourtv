@@ -168,7 +168,10 @@ public class BrowseActivity extends Activity {
                 : Discover.SORT_NEW.equals(s) ? R.string.dc_newest : R.string.dc_popular_sort);
     }
 
-    /** A capsule that is one of a pair: solid while chosen, glass otherwise, bright glass while focused. */
+    /**
+     * A capsule that is one of a pair: solid white while chosen (focused too: then brighter, glowing and larger, as
+     * the Settings panel's chips), glass otherwise, bright glass while focused.
+     */
     private TextView choice(String label, boolean chosen, View.OnClickListener click) {
         TextView t = ui.text(label, 14, R.string.font_medium, chosen ? 0xFF111111 : DiscoverUi.INK);
         t.setGravity(Gravity.CENTER);
@@ -177,8 +180,9 @@ public class BrowseActivity extends Activity {
         t.setClickable(true);
         Runnable paint = () -> {
             boolean f = t.isFocused();
-            t.setBackground(f ? ui.focusedGlass(20) : chosen ? DiscoverUi.round(0xE6FFFFFF, ui.px(20)) : ui.glass(20));
-            t.setTextColor(f || !chosen ? DiscoverUi.INK : 0xFF111111);
+            t.setBackground(chosen ? DiscoverUi.round(f ? 0xFFFFFFFF : 0xE6FFFFFF, ui.px(20)) : f ? ui.focusedGlass(20) : ui.glass(20));
+            t.setForeground(f ? new GlowDrawable(ui.px(20), ui.px(12), 0, 0x4DFFFFFF) : null);
+            t.setTextColor(chosen ? 0xFF111111 : DiscoverUi.INK);
             t.animate().scaleX(f ? 1.07f : 1f).scaleY(f ? 1.07f : 1f).setDuration(ui.ms(160)).start();
         };
         paint.run();
@@ -403,6 +407,7 @@ public class BrowseActivity extends Activity {
         }
         LinearLayout card = ui.card(h.picture(), h.name, 200,
                 v -> startActivity(TitleActivity.intent(this, h.kind, h.id, h.name, h.backdrop)));
+        ui.markWhere(card, h.kind, h.id);
         View.OnFocusChangeListener lift = card.getOnFocusChangeListener();
         LinearLayout row = lastRow;
         card.setTag(h);

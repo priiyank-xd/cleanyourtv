@@ -174,7 +174,9 @@ public final class LauncherSettingsActivity extends Activity {
         }
         lgBackground = Config.lgBackground(this);
         boolean lgHome = Config.HOME_LG.equals(Config.homeLayout(this));
-        findViewById(R.id.lgBackgroundGroup).setVisibility(lgHome ? View.VISIBLE : View.GONE);
+        // Fork: on the LG-style home the Settings panel holds the background and clock choices; they live there only.
+        findViewById(R.id.lgBackgroundGroup).setVisibility(View.GONE);
+        findViewById(R.id.clockGroup).setVisibility(lgHome ? View.GONE : View.VISIBLE);
         // Fork: the grid layout, dock band and advanced effects only change the classic grid home.
         findViewById(R.id.classicGridGroup).setVisibility(lgHome ? View.GONE : View.VISIBLE);
         findViewById(R.id.advancedGroup).setVisibility(lgHome ? View.GONE : View.VISIBLE);
@@ -192,7 +194,7 @@ public final class LauncherSettingsActivity extends Activity {
         }
         followThemeChoice = findViewById(R.id.followThemeChoice);
         followThemeChoice.setOnClickListener(v -> {
-            if (!hasOnTvChoices()) return;
+            if (!hasOnTvChoices()) return;   // nothing to reset: the row is dimmed
             choices.edit().remove("columns").remove(Config.ROWS_BELOW_DOCK_KEY).remove("animations")
                     .remove("advanced_effects").remove(Config.WALLPAPER_CHOICE_KEY)
                     .remove(Config.DOCK_OPACITY_KEY).remove(Config.CLOCK_FORMAT_KEY).remove(OpenOnStart.KEY)
@@ -214,7 +216,7 @@ public final class LauncherSettingsActivity extends Activity {
                 open(SystemSettings.intent(this, Settings.ACTION_SETTINGS)));
         refresh();
         if (config.launcherSettingsButton) reorderChoice.requestFocus();
-        else if (lgHome) lgBackgroundChoices[Config.LG_MOVIE_ART.equals(lgBackground) ? 1 : 0].requestFocus();
+        else if (lgHome) wallpaperChoice.requestFocus();
         else columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
     }
 
@@ -377,6 +379,8 @@ public final class LauncherSettingsActivity extends Activity {
             for (int i = 0; i < items.length; i++) {
                 final int which = i;
                 TextView row = new TextView(this, null, 0, R.style.SettingsRow);
+                row.setBackgroundResource(R.drawable.settings_choice_bg);
+                row.setTextColor(getColorStateList(R.color.settings_choice_text));
                 row.setText(items[i]);
                 row.setSingleLine(true);
                 row.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -406,6 +410,7 @@ public final class LauncherSettingsActivity extends Activity {
         for (int i = 0; i < buttons.length; i++) {
             final Runnable action = actions[i];
             TextView b = new TextView(this, null, 0, R.style.SettingsRow);
+            b.setBackgroundResource(R.drawable.settings_choice_bg);
             b.setText(buttons[i]);
             b.setGravity(android.view.Gravity.CENTER);
             b.setPadding(Math.round(24 * dp), 0, Math.round(24 * dp), 0);
@@ -552,20 +557,30 @@ public final class LauncherSettingsActivity extends Activity {
         for (int i = 0; i < lgBackgroundChoices.length; i++) {
             lgBackgroundChoices[i].setSelected(LG_BACKGROUNDS[i].equals(lgBackground));
         }
-        animationsChoice.setText(getString(R.string.animations_state,
+        animationsChoice.setText(twoLines(getString(R.string.settings_animations),
                 getString(animations ? R.string.on : R.string.off)));
-        advancedChoice.setText(getString(R.string.advanced_effects_state,
+        advancedChoice.setText(twoLines(getString(R.string.advanced_effects),
                 getString(advancedEffects ? R.string.on : R.string.off)));
         advancedChoice.setEnabled(animations);
         advancedChoice.setAlpha(animations ? 1f : 0.5f);
         String wallpaperCurrent = choices.getString(Config.WALLPAPER_CHOICE_KEY, null);
-        wallpaperChoice.setText(getString(R.string.wallpaper_state,
+        wallpaperChoice.setText(twoLines(getString(R.string.wallpaper_label),
                 "none".equals(wallpaperCurrent) ? getString(R.string.wallpaper_none)
                         : wallpaperCurrent != null ? wallpaperCurrent
                         : getString(R.string.wallpaper_theme_default)));
-        openOnStartChoice.setText(getString(R.string.open_on_start_state, openOnStartLabel()));
-        screensaverChoice.setText(getString(R.string.screensaver_state, screensaverLabel()));
-        followThemeChoice.setSelected(!hasOnTvChoices());
+        openOnStartChoice.setText(twoLines(getString(R.string.open_on_start_label), openOnStartLabel()));
+        screensaverChoice.setText(twoLines(getString(R.string.screensaver_label), screensaverLabel()));
+        // Fork: a reset is an action, never a chosen (white) row; with nothing to reset it is dimmed
+        followThemeChoice.setAlpha(hasOnTvChoices() ? 1f : 0.5f);
+    }
+
+    /** Fork: a row's name with its current value under it, smaller and dim, as in the Settings panel. */
+    private CharSequence twoLines(String title, String value) {
+        android.text.SpannableString s = new android.text.SpannableString(title + "\n" + value);
+        int at = title.length() + 1;
+        s.setSpan(new android.text.style.RelativeSizeSpan(11.5f / 15f), at, s.length(), 0);
+        s.setSpan(new android.text.style.ForegroundColorSpan(0x8CFFFFFF), at, s.length(), 0);
+        return s;
     }
 
     private boolean hasOnTvChoices() {
