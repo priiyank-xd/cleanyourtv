@@ -15,7 +15,6 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -91,7 +90,7 @@ final class SearchPane implements DiscoverActivity.Pane {
         field.setOnFocusChangeListener((v, has) -> fieldBox.setBackground(ui.field(26, has)));
         ui.place(page, fieldBox, 180, 82, 600, 52);
 
-        scroll = new ScrollView(act);
+        scroll = ui.page();
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipToPadding(false);
         scroll.setClipChildren(false);
@@ -251,9 +250,9 @@ final class SearchPane implements DiscoverActivity.Pane {
             gap(24);
         }
         if (!titles.isEmpty()) {
-            label(act.getString(R.string.dc_titles), act.getString(R.string.dc_count, titles.size()));
+            label(act.getString(R.string.dc_titles), act.getResources().getQuantityString(R.plurals.dc_count, titles.size(), titles.size()));
             List<Item> items = new ArrayList<>();
-            for (Discover.Hit h : titles) items.add(new Item(h.picture(), h.name, h.kind, h.id, h.backdrop));
+            for (Discover.Hit h : titles) items.add(item(h));
             grid(items);
         }
     }
@@ -332,9 +331,9 @@ final class SearchPane implements DiscoverActivity.Pane {
                 status.setText(R.string.dc_offline);
                 return;
             }
-            status.setText(hits.isEmpty() ? act.getString(R.string.dc_ask_none) : act.getString(R.string.dc_count, hits.size()));
+            status.setText(hits.isEmpty() ? act.getString(R.string.dc_ask_none) : act.getResources().getQuantityString(R.plurals.dc_count, hits.size(), hits.size()));
             List<Item> items = new ArrayList<>();
-            for (Discover.Hit h : hits) items.add(new Item(h.picture(), h.name, h.kind, h.id, h.backdrop));
+            for (Discover.Hit h : hits) items.add(item(h));
             grid(items);
         };
         if (!a.similarTo.isEmpty()) {
@@ -403,7 +402,7 @@ final class SearchPane implements DiscoverActivity.Pane {
         all.addAll(feed.newThisWeek());
         for (Tmdb.Title t : all) {
             if (items.size() >= 8) break;
-            if (seen.add(t.kind + t.id)) items.add(new Item(t.backdrop, t.name, t.kind, t.id, t.backdrop));
+            if (seen.add(t.kind + t.id)) items.add(new Item(t.backdrop, t.name, "", t.kind, t.id, t.backdrop));
         }
         if (items.isEmpty()) return;
         label(act.getString(R.string.dc_popular), null);
@@ -436,16 +435,10 @@ final class SearchPane implements DiscoverActivity.Pane {
 
     /** A horizontally scrolling row, added to the page. */
     private LinearLayout shelfRow() {
-        HorizontalScrollView hs = new HorizontalScrollView(act);
-        hs.setHorizontalScrollBarEnabled(false);
-        hs.setClipChildren(false);
-        hs.setClipToPadding(false);
         LinearLayout row = new LinearLayout(act);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setClipChildren(false);
-        row.setPadding(0, ui.px(6), ui.px(40), ui.px(6));
-        hs.addView(row);
-        content.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+        row.setPadding(0, ui.px(6), 0, ui.px(6));
+        content.addView(ui.sideways(row, 56, 56), ui.bleed(56, 56));
         return row;
     }
 
@@ -458,7 +451,9 @@ final class SearchPane implements DiscoverActivity.Pane {
         item.addView(photo, new LinearLayout.LayoutParams(ui.px(64), ui.px(64)));
         LinearLayout words = new LinearLayout(act);
         words.setOrientation(LinearLayout.VERTICAL);
-        words.addView(ui.text(p.name, 14, R.string.font_medium, DiscoverUi.INK));
+        TextView name = ui.text(p.name, 14, R.string.font_medium, DiscoverUi.INK);
+        name.setMaxWidth(ui.px(240));
+        words.addView(name, new LinearLayout.LayoutParams(-2, -2));   // not the default match_parent, which squeezed it to the role's width
         TextView role = ui.text(PersonActivity.role(p.sub), 12, R.string.font_regular, DiscoverUi.INK_DIM);
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-2, -2);
         rlp.topMargin = ui.px(4);
@@ -474,13 +469,21 @@ final class SearchPane implements DiscoverActivity.Pane {
         return item;
     }
 
+    /** A result's card, with "Series · 2020" under the name so titles that share a name can be told apart. */
+    private Item item(Discover.Hit h) {
+        String kind = act.getString("movie".equals(h.kind) ? R.string.dc_movie : R.string.dc_one_series);
+        String sub = h.year.isEmpty() ? kind : act.getString(R.string.dc_pair, kind, h.year);
+        return new Item(h.picture(), h.name, sub, h.kind, h.id, h.backdrop);
+    }
+
     private static final class Item {
-        final String picture, name, kind, backdrop;
+        final String picture, name, sub, kind, backdrop;
         final int id;
 
-        Item(String picture, String name, String kind, int id, String backdrop) {
+        Item(String picture, String name, String sub, String kind, int id, String backdrop) {
             this.picture = picture;
             this.name = name;
+            this.sub = sub;
             this.kind = kind;
             this.id = id;
             this.backdrop = backdrop;
@@ -493,14 +496,14 @@ final class SearchPane implements DiscoverActivity.Pane {
         boolean firstRow = firstResult == null;
         for (int i = 0; i < items.size(); i++) {
             if (i % COLUMNS == 0) {
-                row = new LinearLayout(act);
+                row = ui.row();
                 row.setClipChildren(false);
                 LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
                 rlp.bottomMargin = ui.px(22);
                 content.addView(row, rlp);
             }
             Item it = items.get(i);
-            LinearLayout card = ui.card(it.picture, it.name, CARD_W, v -> open(it));
+            LinearLayout card = ui.card(it.picture, it.name, it.sub, CARD_W, v -> open(it));
             card.setId(View.generateViewId());
             if (firstRow && i < COLUMNS) card.setNextFocusUpId(field.getId());
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(CARD_W), -2);

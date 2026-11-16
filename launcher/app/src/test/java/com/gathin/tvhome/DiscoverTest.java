@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -86,8 +87,58 @@ public class DiscoverTest {
         assertEquals(350, Discover.primary(a, Collections.singletonList("com.apple.atve.androidtv.appletv")).id);
         assertEquals(8, Discover.primary(a, Collections.emptyList()).id);   // none installed: offer the first to get
         assertNull(Discover.primary(new Discover.Availability(), Collections.emptyList()));
-        List<Discover.Provider> also = Discover.others(a, Discover.primary(a, Collections.emptyList()), 3);
+        List<Discover.Provider> also = Discover.others(a, Collections.singletonList(Discover.primary(a, Collections.emptyList())), 3);
         assertEquals(Arrays.asList(350, 119, 11), Arrays.asList(also.get(0).id, also.get(1).id, also.get(2).id));
+    }
+
+    @Test public void alsoOnShowsEachAppOnce() throws Exception {
+        Discover.Availability a = Discover.parseDetails(new JSONObject("{\"id\":3,\"name\":\"Panchayat\","
+                + "\"watch/providers\":{\"results\":{\"IN\":{\"flatrate\":[{\"provider_id\":119,\"provider_name\":\"Amazon Prime Video\"},"
+                + "{\"provider_id\":2100,\"provider_name\":\"Amazon Prime Video with Ads\"}],"
+                + "\"free\":[{\"provider_id\":119,\"provider_name\":\"Amazon Prime Video\"}]}}}}"), "tv").where;
+        assertEquals(119, Discover.primary(a, Collections.emptyList()).id);
+        assertTrue(Discover.others(a, Collections.singletonList(Discover.primary(a, Collections.emptyList())), 3).isEmpty());
+    }
+
+    @Test public void watchOnListsEachStreamingAppOnceInstalledFirst() throws Exception {
+        Discover.Availability a = Discover.parseDetails(new JSONObject("{\"id\":4,\"title\":\"X\","
+                + "\"watch/providers\":{\"results\":{\"IN\":{\"flatrate\":[{\"provider_id\":119,\"provider_name\":\"Amazon Prime Video\"},"
+                + "{\"provider_id\":2100,\"provider_name\":\"Amazon Prime Video with Ads\"},{\"provider_id\":9999,\"provider_name\":\"No app\"},"
+                + "{\"provider_id\":2336,\"provider_name\":\"JioHotstar\"}],"
+                + "\"buy\":[{\"provider_id\":8,\"provider_name\":\"Netflix\"}]}}}}"), "movie").where;
+        List<Discover.Provider> apps = Discover.apps(a, Collections.singletonList("in.startv.hotstar"), 3);
+        assertEquals(Arrays.asList(2336, 119), Arrays.asList(apps.get(0).id, apps.get(1).id));
+        assertEquals(2, apps.size());
+        assertEquals(1, Discover.apps(a, Collections.emptyList(), 1).size());
+        assertTrue(Discover.apps(new Discover.Availability(), Collections.emptyList(), 3).isEmpty());
+    }
+
+    @Test public void indiaChartComesFromJustWatchWithTmdbIds() throws Exception {
+        String body = Discover.justWatchTopBody(Arrays.asList(8, 2336, 9999), 15);
+        JSONObject vars = new JSONObject(body).getJSONObject("variables");
+        assertEquals("IN", vars.getString("country"));
+        assertEquals("[\"nfx\",\"jhs\"]", vars.getJSONObject("filter").getJSONArray("packages").toString());
+        List<Discover.Hit> top = Discover.parseJustWatchTop(new JSONObject("{\"data\":{\"popularTitles\":{\"edges\":["
+                + "{\"node\":{\"objectType\":\"SHOW\",\"content\":{\"title\":\"Mirzapur\",\"originalReleaseYear\":2018,"
+                + "\"posterUrl\":\"/poster/1/{profile}/mirzapur.{format}\",\"backdrops\":[],\"externalIds\":{\"tmdbId\":\"84105\"}}}},"
+                + "{\"node\":{\"objectType\":\"SHOW\",\"content\":{\"title\":\"No TMDB\",\"externalIds\":{\"tmdbId\":null}}}},"
+                + "{\"node\":{\"objectType\":\"MOVIE\",\"content\":{\"title\":\"Jailer 2\",\"originalReleaseYear\":2026,"
+                + "\"backdrops\":[{\"backdropUrl\":\"/backdrop/2/{profile}/j.{format}\"}],\"externalIds\":{\"tmdbId\":\"1234139\"}}}}]}}}"), 10);
+        assertEquals(2, top.size());
+        assertEquals("tv", top.get(0).kind);
+        assertEquals(84105, top.get(0).id);
+        assertEquals("2018", top.get(0).year);
+        assertEquals("https://images.justwatch.com/poster/1/s332/mirzapur.webp", top.get(0).poster);
+        assertEquals("movie", top.get(1).kind);
+        assertEquals("https://images.justwatch.com/backdrop/2/s1440/j.webp", top.get(1).backdrop);
+    }
+
+    @Test public void moreLikeThisKeepsOnlyTitlesStreamingHere() throws Exception {
+        assertTrue(Discover.streamsHere(new JSONObject("{\"results\":{\"IN\":{\"flatrate\":[{\"provider_id\":8}]}}}")));
+        assertTrue(Discover.streamsHere(new JSONObject("{\"results\":{\"IN\":{\"ads\":[{\"provider_id\":515}]}}}")));
+        assertFalse(Discover.streamsHere(new JSONObject("{\"results\":{\"IN\":{\"buy\":[{\"provider_id\":10}]}}}")));
+        assertFalse(Discover.streamsHere(new JSONObject("{\"results\":{\"US\":{\"flatrate\":[{\"provider_id\":8}]}}}")));
+        assertFalse(Discover.streamsHere(null));
     }
 
     @Test public void runtimeAndCertificationReadAsPeopleWriteThem() {

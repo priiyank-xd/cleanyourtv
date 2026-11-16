@@ -59,8 +59,8 @@ final class SaveSheet {
             return;
         }
         FrameLayout later = ui.tick(false), fav = ui.tick(false);
-        View first = sheet.row(later, act.getString(R.string.dc_watch_later), null, v -> mark(a, Discover.WATCHLIST, later));
-        sheet.row(fav, act.getString(R.string.dc_favourites), null, v -> mark(a, Discover.FAVORITE, fav));
+        View first = sheet.rowEnd(null, act.getString(R.string.dc_watch_later), later, v -> mark(a, Discover.WATCHLIST, later));
+        sheet.rowEnd(null, act.getString(R.string.dc_favourites), fav, v -> mark(a, Discover.FAVORITE, fav));
         first.requestFocus();
         net.call("GET", Discover.statesUrl(kind, id, a.session), null, net.appToken(), j -> {
             if (j == null || act.isDestroyed()) return;
@@ -72,7 +72,7 @@ final class SaveSheet {
             if (lists == null || act.isDestroyed() || ui.open != sheet) return;
             for (Discover.UserList l : lists) {
                 FrameLayout t = ui.tick(false);
-                sheet.row(t, l.name, null, v -> toggleList(a, l, t));
+                sheet.rowEnd(null, l.name, t, v -> toggleList(a, l, t));
                 net.listItems(a, l.id, items -> {
                     if (items == null || act.isDestroyed()) return;
                     for (Discover.Hit h : items) if (h.id == id && h.kind.equals(kind)) ui.setTick(t, true);
@@ -81,7 +81,7 @@ final class SaveSheet {
             ImageView plus = new ImageView(act);
             plus.setImageResource(R.drawable.ic_dc_plus);
             plus.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            sheet.row(plus, act.getString(R.string.dc_new_list), null, v -> newList(a));
+            sheet.rowEnd(null, act.getString(R.string.dc_new_list), plus, v -> newList(a));
         });
     }
 
@@ -90,6 +90,7 @@ final class SaveSheet {
         ui.setTick(tick, on);
         net.call("POST", Discover.markUrl(what, a.accountId, a.session), Discover.markBody(what, kind, id, on), net.appToken(), j -> {
             if (j == null) failed(tick, !on);
+            else if (on) noteSaved();
         });
     }
 
@@ -98,6 +99,14 @@ final class SaveSheet {
         ui.setTick(tick, on);
         net.call(on ? "POST" : "DELETE", Discover.itemsUrl(l.id), Discover.itemsBody(kind, id), a.access, j -> {
             if (j == null) failed(tick, !on);
+            else if (on) noteSaved();
+        });
+    }
+
+    /** Saving says a lot about your taste: noted for Browse's "For you" (the details are usually cached by now). */
+    private void noteSaved() {
+        net.details(kind, id, d -> {
+            if (d != null) Taste.get(act).saved(kind, id, d.genreIds, d.language);
         });
     }
 

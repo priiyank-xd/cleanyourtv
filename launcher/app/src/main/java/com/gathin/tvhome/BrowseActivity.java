@@ -27,6 +27,8 @@ import java.util.Set;
 public class BrowseActivity extends Activity {
     private static final String GENRE = "genre", LANGUAGE = "language";
     private static final int COLUMNS = 4, MAX_PAGES = 10;
+    /** For you reorders the 100 most popular titles (5 pages), then shows them 20 at a time. */
+    private static final int POOL_PAGES = 5, STEP = 20;
     private static final long FRESH_MS = 6 * DiscoverNet.HOURS;
 
     static Intent genre(Context ctx, int index) {
@@ -46,11 +48,14 @@ public class BrowseActivity extends Activity {
     private int fixedGenre = -1;
     private String fixedLanguage;
     /** The filters. */
-    private String kind = "movie", sort = Discover.SORT_POPULAR, language;
+    private String kind = "movie", sort = Discover.SORT_FOR_YOU, language;
     private int genre = -1;
     private boolean onlyMine = true;
     private Set<Integer> mine;
     private int loadedPages, total, seq;
+    /** For you: the reordered pool, and how much of it is on the grid. */
+    private List<Discover.Hit> ranked;
+    private int placedCount;
     private boolean fetching;
     private LinearLayout lastRow;
     private int inRow;
@@ -74,7 +79,7 @@ public class BrowseActivity extends Activity {
         glow.setColors(new int[]{fixedLanguage != null ? 0x8C4A2E14 : 0x8C14304A, 0x0008080B});
         root.setBackground(new LayerDrawable(new Drawable[]{DiscoverUi.round(0xFF08080B, 0), glow}));
         root.setClipChildren(false);
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = ui.page();
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipChildren(false);
         scroll.setClipToPadding(false);
@@ -100,7 +105,7 @@ public class BrowseActivity extends Activity {
         head.addView(count, clp);
         page.addView(head);
 
-        controls = new LinearLayout(this);
+        controls = ui.row();
         controls.setGravity(Gravity.CENTER_VERTICAL);
         controls.setClipChildren(false);
         controls.setClipToPadding(false);
@@ -159,7 +164,8 @@ public class BrowseActivity extends Activity {
     }
 
     private String sortLabel(String s) {
-        return getString(Discover.SORT_TOP.equals(s) ? R.string.dc_top_rated : Discover.SORT_NEW.equals(s) ? R.string.dc_newest : R.string.dc_popular_sort);
+        return getString(Discover.SORT_FOR_YOU.equals(s) ? R.string.dc_for_you : Discover.SORT_TOP.equals(s) ? R.string.dc_top_rated
+                : Discover.SORT_NEW.equals(s) ? R.string.dc_newest : R.string.dc_popular_sort);
     }
 
     /** A capsule that is one of a pair: solid while chosen, glass otherwise, bright glass while focused. */
@@ -238,7 +244,7 @@ public class BrowseActivity extends Activity {
     private void sortSheet() {
         sheet = ui.new Sheet(root, page, getString(R.string.dc_sort), null);
         View first = null;
-        for (String s : new String[]{Discover.SORT_POPULAR, Discover.SORT_TOP, Discover.SORT_NEW}) {
+        for (String s : new String[]{Discover.SORT_FOR_YOU, Discover.SORT_POPULAR, Discover.SORT_TOP, Discover.SORT_NEW}) {
             View row = sheet.row(null, sortLabel(s), s.equals(sort) ? "✓" : null, v -> {
                 closeSheet();
                 sort = s;
@@ -272,7 +278,7 @@ public class BrowseActivity extends Activity {
         View chosen = sheet.row(null, getString(R.string.dc_any_genre), genre < 0 ? "✓" : null, v -> pickGenre(-1));
         for (int i = 0; i < Discover.GENRES.size(); i++) {
             int index = i;
-            if (Discover.GENRES.get(i).idFor(kind) == 0) continue;
+            if (Discover.GENRES.get(i).idFor(kind) == 0 || Discover.GENRES.get(i).isMood()) continue;
             View row = sheet.row(null, Discover.GENRES.get(i).name, i == genre ? "✓" : null, v -> pickGenre(index));
             if (i == genre) chosen = row;
         }
@@ -294,20 +300,78 @@ public class BrowseActivity extends Activity {
         inRow = 0;
         loadedPages = 0;
         total = 0;
+        ranked = null;
+        placedCount = 0;
         fetching = false;
         count.setText(R.string.dc_loading);
         seq++;
         more();
     }
 
+    private String pageUrl(String order, int page) {
+        int g = fixedGenre >= 0 ? Discover.GENRES.get(fixedGenre).idFor(kind) : genre >= 0 ? Discover.GENRES.get(genre).idFor(kind) : 0;
+        String lang = fixedLanguage != null ? fixedLanguage : language;
+        String words = fixedGenre >= 0 ? Discover.GENRES.get(fixedGenre).keywordsFor(kind) : "";
+        return Discover.browseUrl(kind, g, words, lang, order, onlyMine ? mine : null, page, LocalDate.now());
+    }
+
+    /** For you: the 100 most popular, all pages asked at once, reordered for you once they are in. */
+    private void forYou() {
+        if (ranked != null) {
+            showRanked();
+            return;
+        }
+        if (fetching) return;
+        fetching = true;
+        int mineSeq = seq;
+        org.json.JSONObject[] answers = new org.json.JSONObject[POOL_PAGES];
+        int[] left = {POOL_PAGES};
+        for (int p = 0; p < POOL_PAGES; p++) {
+            int at = p;
+            net.answer(pageUrl(Discover.SORT_POPULAR, p + 1), FRESH_MS, a -> {
+                if (mineSeq != seq || isDestroyed()) return;
+                answers[at] = a == null ? null : a.json;
+                if (--left[0] > 0) return;
+                fetching = false;
+                if (answers[0] == null) {
+                    count.setText(R.string.dc_offline);
+                    return;
+                }
+                total = Math.min(Discover.total(answers[0]), POOL_PAGES * STEP);
+                count.setText(getString(onlyMine ? R.string.dc_count_mine : R.string.dc_count_all, Discover.total(answers[0])));
+                List<Discover.Hit> pool = new java.util.ArrayList<>();
+                Set<String> seen = new java.util.HashSet<>();
+                for (org.json.JSONObject ans : answers) {
+                    for (Discover.Hit h : Discover.parseList(ans, kind, STEP)) if (seen.add(h.kind + ":" + h.id)) pool.add(h);
+                }
+                ranked = Taste.rank(pool, Taste.get(this).signals(), LocalDate.now());
+                if (ranked.isEmpty()) count.setText(R.string.dc_none_here);
+                showRanked();
+            });
+        }
+    }
+
+    /** The next 20 of the For you order. */
+    private void showRanked() {
+        boolean first = grid.getChildCount() == 0;
+        int end = Math.min(ranked.size(), placedCount + STEP);
+        for (int i = placedCount; i < end; i++) add(ranked.get(i));
+        placedCount = end;
+        if (first && grid.getChildCount() > 0 && !placed(getCurrentFocus())) {
+            ((LinearLayout) grid.getChildAt(0)).getChildAt(0).requestFocus();
+        }
+    }
+
     /** The next page, when there is one and none is on its way. */
     private void more() {
+        if (Discover.SORT_FOR_YOU.equals(sort)) {
+            forYou();
+            return;
+        }
         if (fetching || loadedPages >= MAX_PAGES || (loadedPages > 0 && loadedPages * 20 >= total)) return;
         fetching = true;
         int mineSeq = seq;
-        int g = fixedGenre >= 0 ? Discover.GENRES.get(fixedGenre).idFor(kind) : genre >= 0 ? Discover.GENRES.get(genre).idFor(kind) : 0;
-        String lang = fixedLanguage != null ? fixedLanguage : language;
-        String url = Discover.browseUrl(kind, g, lang, sort, onlyMine ? mine : null, loadedPages + 1, LocalDate.now());
+        String url = pageUrl(sort, loadedPages + 1);
         net.answer(url, FRESH_MS, a -> {
             if (mineSeq != seq || isDestroyed()) return;
             fetching = false;
@@ -321,7 +385,7 @@ public class BrowseActivity extends Activity {
             List<Discover.Hit> hits = Discover.parseList(a.json, kind, 20);
             boolean first = grid.getChildCount() == 0;
             for (Discover.Hit h : hits) add(h);
-            if (first && grid.getChildCount() > 0 && (getCurrentFocus() == null || !getCurrentFocus().isShown())) {
+            if (first && grid.getChildCount() > 0 && !placed(getCurrentFocus())) {
                 ((LinearLayout) grid.getChildAt(0)).getChildAt(0).requestFocus();
             }
             if (hits.isEmpty() && loadedPages == 1) count.setText(R.string.dc_none_here);
@@ -330,7 +394,7 @@ public class BrowseActivity extends Activity {
 
     private void add(Discover.Hit h) {
         if (lastRow == null || inRow == COLUMNS) {
-            lastRow = new LinearLayout(this);
+            lastRow = ui.row();
             lastRow.setClipChildren(false);
             LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
             rlp.bottomMargin = ui.px(22);
@@ -341,8 +405,10 @@ public class BrowseActivity extends Activity {
                 v -> startActivity(TitleActivity.intent(this, h.kind, h.id, h.name, h.backdrop)));
         View.OnFocusChangeListener lift = card.getOnFocusChangeListener();
         LinearLayout row = lastRow;
+        card.setTag(h);
         card.setOnFocusChangeListener((v, has) -> {
             lift.onFocusChange(v, has);
+            if (has) noteShown(row);
             // reaching the last row asks for the next page
             if (has && grid.indexOfChild(row) >= grid.getChildCount() - 1) more();
         });
@@ -350,5 +416,24 @@ public class BrowseActivity extends Activity {
         if (inRow != COLUMNS - 1) lp.rightMargin = ui.px(16);
         lastRow.addView(card, lp);
         inRow++;
+    }
+
+    /** A row you are on was seen: its titles are noted, so ones you pass over again and again sink in For you. */
+    private void noteShown(LinearLayout row) {
+        List<Discover.Hit> seenRow = new java.util.ArrayList<>();
+        for (int i = 0; i < row.getChildCount(); i++) {
+            Object t = row.getChildAt(i).getTag();
+            if (t instanceof Discover.Hit) seenRow.add((Discover.Hit) t);
+        }
+        Taste.get(this).shown(seenRow);
+    }
+
+    /** Whether focus sits on something the person can see and use: a control or a title, not the page itself. */
+    private boolean placed(View f) {
+        if (f == null || !f.isShown()) return false;
+        for (View v = f; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) {
+            if (v == controls || v == grid) return true;
+        }
+        return false;
     }
 }

@@ -28,6 +28,7 @@ final class Discover {
     static final Map<Integer, String> EXTRA_PACKAGES = new HashMap<>();
     static {
         EXTRA_PACKAGES.put(192, "com.google.android.youtube.tv");
+        EXTRA_PACKAGES.put(2100, "com.amazon.amazonvideo.livingroom");   // Amazon Prime Video with Ads
     }
 
     /** Results the search screen keeps. */
@@ -57,6 +58,9 @@ final class Discover {
         final double popularity;
         /** A person's department ("Acting", "Directing"); a credit's role ("Anjali"); else empty. */
         final String sub;
+        /** TMDB genre ids and original language, when the list gives them (for "For you"). */
+        int[] genres = new int[0];
+        String language = "";
 
         Hit(String kind, int id, String name, String date, String backdrop, String poster, double popularity, String sub) {
             this.kind = kind;
@@ -94,8 +98,15 @@ final class Discover {
         boolean movie = "movie".equals(k);
         String name = r.optString(movie ? "title" : "name", "").trim();
         if (name.isEmpty()) return null;
-        return new Hit(k, r.optInt("id"), name, r.optString(movie ? "release_date" : "first_air_date", ""),
+        Hit h = new Hit(k, r.optInt("id"), name, r.optString(movie ? "release_date" : "first_air_date", ""),
                 path(r, "backdrop_path"), path(r, "poster_path"), r.optDouble("popularity", 0), r.optString("character", ""));
+        JSONArray g = r.optJSONArray("genre_ids");
+        if (g != null) {
+            h.genres = new int[g.length()];
+            for (int i = 0; i < g.length(); i++) h.genres[i] = g.optInt(i);
+        }
+        h.language = r.optString("original_language", "");
+        return h;
     }
 
     static String searchUrl(String query) {
@@ -205,11 +216,28 @@ final class Discover {
     static final class Genre {
         final String name;
         final int movie, tv;
+        /** TMDB keywords narrowing the genre (with_keywords, | is "any"), for a mood like Stoner; "" for none. */
+        final String movieKeywords, tvKeywords;
 
         Genre(String name, int movie, int tv) {
+            this(name, movie, tv, "", "");
+        }
+
+        Genre(String name, int movie, int tv, String movieKeywords, String tvKeywords) {
             this.name = name;
             this.movie = movie;
             this.tv = tv;
+            this.movieKeywords = movieKeywords;
+            this.tvKeywords = tvKeywords;
+        }
+
+        String keywordsFor(String kind) {
+            return "movie".equals(kind) ? movieKeywords : tvKeywords;
+        }
+
+        /** A mood made of keywords: a Browse shelf only, not something Ask or a genre menu can pick. */
+        boolean isMood() {
+            return !movieKeywords.isEmpty() || !tvKeywords.isEmpty();
         }
 
         int idFor(String kind) {
@@ -221,7 +249,9 @@ final class Discover {
             new Genre("Action", 28, 10759), new Genre("Comedy", 35, 35), new Genre("Drama", 18, 18),
             new Genre("Thriller", 53, 9648), new Genre("Crime", 80, 80), new Genre("Sci-Fi", 878, 10765),
             new Genre("Romance", 10749, 0), new Genre("Horror", 27, 0), new Genre("Family", 10751, 10751),
-            new Genre("Animation", 16, 16), new Genre("Documentary", 99, 99));
+            new Genre("Animation", 16, 16), new Genre("Documentary", 99, 99),
+            // comedies tagged stoner / stoner movie / stoner comedy / weed comedy; series: comedies tagged marijuana
+            new Genre("Stoner", 35, 35, "54169|245597|302399|367481", "10776"));
 
     /** A language as Browse shows it: TMDB's original-language code, its own name and its English name. */
     static final class Language {
@@ -242,10 +272,13 @@ final class Discover {
             new Language("kn", "\u0c95\u0ca8\u0ccd\u0ca8\u0ca1", "Kannada"),
             new Language("bn", "\u09ac\u09be\u0982\u09b2\u09be", "Bengali"),
             new Language("mr", "\u092e\u0930\u093e\u0920\u0940", "Marathi"),
+            new Language("gu", "\u0a97\u0ac1\u0a9c\u0ab0\u0abe\u0aa4\u0ac0", "Gujarati"),
             new Language("en", "English", "English"),
             new Language("ko", "\ud55c\uad6d\uc5b4", "Korean"));
 
     static final String SORT_POPULAR = "popular", SORT_TOP = "top", SORT_NEW = "new";
+    /** Browse's default: popular titles reordered for you on the projector ({@link Taste#rank}). */
+    static final String SORT_FOR_YOU = "foryou";
 
     /**
      * A page of a Browse grid. {@code genre} 0 and {@code language} null mean any; {@code providers} null means
@@ -253,6 +286,12 @@ final class Discover {
      * leaves out what isn't out yet.
      */
     static String browseUrl(String kind, int genre, String language, String sort, Set<Integer> providers, int page, LocalDate today) {
+        return browseUrl(kind, genre, "", language, sort, providers, page, today);
+    }
+
+    /** As above, also narrowed to any of these TMDB {@code keywords} when not empty. */
+    static String browseUrl(String kind, int genre, String keywords, String language, String sort, Set<Integer> providers,
+                            int page, LocalDate today) {
         boolean movie = "movie".equals(kind);
         String date = movie ? "primary_release_date" : "first_air_date";
         StringBuilder u = new StringBuilder(Tmdb.API + "discover/" + (movie ? "movie" : "tv") + "?watch_region=" + Tmdb.REGION
@@ -261,6 +300,7 @@ final class Discover {
         else if (SORT_NEW.equals(sort)) u.append("&sort_by=").append(date).append(".desc&").append(date).append(".lte=").append(today);
         else u.append("&sort_by=popularity.desc");
         if (genre > 0) u.append("&with_genres=").append(genre);
+        if (keywords != null && !keywords.isEmpty()) u.append("&with_keywords=").append(enc(keywords));
         if (language != null && !language.isEmpty()) u.append("&with_original_language=").append(language);
         if (!movie) u.append("&without_genres=").append(enc(Tmdb.SKIP_TV_GENRES));
         if (providers != null) u.append("&with_watch_monetization_types=flatrate&with_watch_providers=").append(enc(ids(providers)));
@@ -432,6 +472,9 @@ final class Discover {
         int id, minutes, seasons;
         int directorId;
         final List<String> genres = new ArrayList<>();
+        /** TMDB genre ids and original language, for "For you". */
+        final List<Integer> genreIds = new ArrayList<>();
+        String language = "";
         final List<String> cast = new ArrayList<>();
         /** Cast with their roles, then the director or creator, for the Cast and crew row. */
         final List<Hit> people = new ArrayList<>();
@@ -440,6 +483,23 @@ final class Discover {
         final List<String> seasonNames = new ArrayList<>();
         final List<Hit> more = new ArrayList<>();
         Availability where = new Availability();
+    }
+
+    /** Where a title can be watched, every country (watch/providers). */
+    static String providersUrl(String kind, int id) {
+        return Tmdb.API + ("movie".equals(kind) ? "movie/" : "tv/") + id + "/watch/providers";
+    }
+
+    /** Whether a watch/providers answer has the title streaming or free (with ads too) in India. */
+    static boolean streamsHere(JSONObject answer) {
+        JSONObject results = answer == null ? null : answer.optJSONObject("results");
+        JSONObject here = results == null ? null : results.optJSONObject(Tmdb.REGION);
+        if (here == null) return false;
+        for (String k : new String[]{"flatrate", "free", "ads"}) {
+            JSONArray list = here.optJSONArray(k);
+            if (list != null && list.length() > 0) return true;
+        }
+        return false;
     }
 
     static String detailsUrl(String kind, int id) {
@@ -465,8 +525,10 @@ final class Discover {
             for (int i = 0; i < genres.length(); i++) {
                 JSONObject g = genres.optJSONObject(i);
                 if (g != null && !g.optString("name").isEmpty()) d.genres.add(g.optString("name"));
+                if (g != null && g.optInt("id") > 0) d.genreIds.add(g.optInt("id"));
             }
         }
+        d.language = o.optString("original_language", "");
         if (movie) d.minutes = o.optInt("runtime");
         else d.seasons = o.optInt("number_of_seasons");
         JSONObject credits = o.optJSONObject("credits");
@@ -549,18 +611,43 @@ final class Discover {
         return null;
     }
 
-    /** Up to {@code max} other providers for the "Also on" line: streaming first, then rent, buy and free. */
-    static List<Provider> others(Availability a, Provider primary, int max) {
+    /**
+     * Up to {@code max} streaming apps to watch on, one per app: installed ones first, then ones to get. Only
+     * providers with a known app; empty when none streams it.
+     */
+    static List<Provider> apps(Availability a, Collection<String> installed, int max) {
+        List<Provider> mine = new ArrayList<>(), get = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Provider p : a.stream) {
+            String pkg = packageFor(p.id);
+            if (pkg == null || !seen.add(pkg)) continue;
+            (installed.contains(pkg) ? mine : get).add(p);
+        }
+        mine.addAll(get);
+        return mine.size() > max ? new ArrayList<>(mine.subList(0, max)) : mine;
+    }
+
+    /**
+     * Up to {@code max} providers for the "Also on" line, besides the apps already {@code shown}: streaming first,
+     * then rent, buy and free. One per app, so Prime Video and "Prime Video with Ads" show once.
+     */
+    static List<Provider> others(Availability a, Collection<Provider> shown, int max) {
         List<Provider> out = new ArrayList<>();
-        Set<Integer> seen = new LinkedHashSet<>();
-        if (primary != null) seen.add(primary.id);
+        Set<String> seen = new LinkedHashSet<>();
+        for (Provider p : shown) seen.add(appKey(p.id));
         for (List<Provider> group : java.util.Arrays.asList(a.stream, a.rent, a.buy, a.free)) {
             for (Provider p : group) {
                 if (out.size() >= max) return out;
-                if (seen.add(p.id)) out.add(p);
+                if (seen.add(appKey(p.id))) out.add(p);
             }
         }
         return out;
+    }
+
+    /** The provider's app package, or its id when no app is known. */
+    private static String appKey(int provider) {
+        String pkg = packageFor(provider);
+        return pkg != null ? pkg : "#" + provider;
     }
 
     /** The YouTube trailer to play: an official trailer first, then any trailer, then a teaser. Empty when none. */
@@ -647,6 +734,82 @@ final class Discover {
 
     /** JustWatch's API, which apps use but JustWatch doesn't offer publicly: it can change or stop answering. */
     static final String JUSTWATCH = "https://apis.justwatch.com/graphql";
+
+    /** JustWatch's short names for the services (JustWatch package ids are TMDB's provider ids). */
+    static final Map<Integer, String> JW_PACKAGES = new HashMap<>();
+    static {
+        JW_PACKAGES.put(8, "nfx");
+        JW_PACKAGES.put(119, "prv");
+        JW_PACKAGES.put(2336, "jhs");
+        JW_PACKAGES.put(232, "zee");
+        JW_PACKAGES.put(237, "snl");
+        JW_PACKAGES.put(350, "atp");
+        JW_PACKAGES.put(515, "mxp");
+        JW_PACKAGES.put(538, "plx");
+    }
+    private static final String JW_IMAGES = "https://images.justwatch.com";
+
+    /**
+     * JustWatch's India chart: what people in India watch most right now, streaming or free on these
+     * {@code providers}. TMDB has no per-country chart, so Top 10 comes from here.
+     */
+    static String justWatchTopBody(Collection<Integer> providers, int first) {
+        try {
+            JSONArray packages = new JSONArray();
+            for (int id : providers) if (JW_PACKAGES.containsKey(id)) packages.put(JW_PACKAGES.get(id));
+            JSONObject filter = new JSONObject().put("monetizationTypes", new JSONArray().put("FLATRATE").put("FREE").put("ADS"));
+            if (packages.length() > 0) filter.put("packages", packages);
+            JSONObject vars = new JSONObject().put("country", Tmdb.REGION).put("language", "en").put("first", first)
+                    .put("filter", filter);
+            return new JSONObject().put("query", "query T($country: Country!, $language: Language!, $first: Int!, $filter: TitleFilter) {"
+                    + " popularTitles(country: $country, filter: $filter, first: $first, sortBy: POPULAR, sortRandomSeed: 0) {"
+                    + " edges { node { objectType content(country: $country, language: $language) { title originalReleaseYear"
+                    + " posterUrl backdrops { backdropUrl } externalIds { tmdbId } } } } } }")
+                    .put("variables", vars).toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    /** The chart as titles that open on TMDB; ones JustWatch can't tie to a TMDB title are skipped. */
+    static List<Hit> parseJustWatchTop(JSONObject answer, int max) {
+        List<Hit> out = new ArrayList<>();
+        JSONObject data = answer == null ? null : answer.optJSONObject("data");
+        JSONObject titles = data == null ? null : data.optJSONObject("popularTitles");
+        JSONArray edges = titles == null ? null : titles.optJSONArray("edges");
+        if (edges == null) return out;
+        for (int i = 0; i < edges.length() && out.size() < max; i++) {
+            JSONObject node = edges.optJSONObject(i) == null ? null : edges.optJSONObject(i).optJSONObject("node");
+            JSONObject c = node == null ? null : node.optJSONObject("content");
+            if (c == null) continue;
+            String type = node.optString("objectType");
+            if (!"MOVIE".equals(type) && !"SHOW".equals(type)) continue;
+            JSONObject ids = c.optJSONObject("externalIds");
+            int id = ids == null ? 0 : parseInt(ids.optString("tmdbId", ""));
+            if (id <= 0) continue;
+            int year = c.optInt("originalReleaseYear");
+            JSONArray backdrops = c.optJSONArray("backdrops");
+            JSONObject b = backdrops == null ? null : backdrops.optJSONObject(0);
+            out.add(new Hit("MOVIE".equals(type) ? "movie" : "tv", id, c.optString("title", ""),
+                    year > 0 ? year + "-01-01" : "", jwImage(b == null ? "" : path(b, "backdropUrl"), "s1440"),
+                    jwImage(path(c, "posterUrl"), "s332"), 0, ""));
+        }
+        return out;
+    }
+
+    /** A JustWatch picture path ("/poster/1/{profile}/x.{format}") as a full address at this size, or "". */
+    static String jwImage(String path, String profile) {
+        if (path.isEmpty()) return "";
+        return JW_IMAGES + path.replace("{profile}", profile).replace("{format}", "webp");
+    }
+
+    private static int parseInt(String s) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
 
     /** A search for {@code name} in India, asking each offer for its Android TV link and its web page. */
     static String justWatchBody(String name) {
@@ -815,6 +978,46 @@ final class Discover {
         return new boolean[]{answer != null && answer.optBoolean("watchlist"), answer != null && answer.optBoolean("favorite")};
     }
 
+    // ---- rating (thumbs) ----
+
+    /** Netflix-style thumbs, and the TMDB rating (out of 10) each one is saved as. */
+    static final int THUMB_NONE = 0, THUMB_DOWN = 1, THUMB_UP = 2, THUMB_LOVE = 3;
+    private static final double[] THUMB_SCORES = {0, 2, 7, 10};
+
+    static double thumbScore(int thumb) {
+        return thumb > 0 && thumb < THUMB_SCORES.length ? THUMB_SCORES[thumb] : 0;
+    }
+
+    /** Your TMDB rating read back as thumbs: 4 or less is down, 9 and up is love, the rest up; none when unrated. */
+    static int thumbOf(double score) {
+        if (score <= 0) return THUMB_NONE;
+        return score <= 4 ? THUMB_DOWN : score >= 9 ? THUMB_LOVE : THUMB_UP;
+    }
+
+    /** Your rating from an account_states answer ("rated": {"value": 7} or false), 0 when unrated. */
+    static double parseRated(JSONObject answer) {
+        JSONObject rated = answer == null ? null : answer.optJSONObject("rated");
+        return rated == null ? 0 : rated.optDouble("value", 0);
+    }
+
+    /** Rates a title (POST with {@link #ratingBody}) or takes the rating off (DELETE), v3 with your session. */
+    static String ratingUrl(String kind, int id, String session) {
+        return Tmdb.API + ("movie".equals(kind) ? "movie/" : "tv/") + id + "/rating?session_id=" + enc(session);
+    }
+
+    static String ratingBody(double score) {
+        try {
+            return new JSONObject().put("value", score).toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    /** TMDB's picks for you from your ratings, watchlist and favourites (v4, with your access token). */
+    static String recommendedUrl(String objectId, String kind) {
+        return V4 + "account/" + objectId + "/" + ("movie".equals(kind) ? "movie" : "tv") + "/recommendations?page=1&language=" + Tmdb.LANGUAGE;
+    }
+
     /** Movies and series of your watchlist (or favourites) together: newest first within each, taken in turn. */
     static List<Hit> interleave(List<Hit> a, List<Hit> b, int max) {
         List<Hit> out = new ArrayList<>();
@@ -870,7 +1073,7 @@ final class Discover {
     static String geminiBody(String sentence, LocalDate today) {
         try {
             JSONArray genreNames = new JSONArray();
-            for (Genre g : GENRES) genreNames.put(g.name);
+            for (Genre g : GENRES) if (!g.isMood()) genreNames.put(g.name);
             JSONArray serviceNames = new JSONArray();
             for (String s : SERVICES.keySet()) serviceNames.put(s);
             JSONObject props = new JSONObject()
@@ -922,7 +1125,9 @@ final class Discover {
         JSONArray genres = f.optJSONArray("genres");
         if (genres != null) {
             for (int i = 0; i < genres.length(); i++) {
-                for (Genre g : GENRES) if (g.name.equals(genres.optString(i)) && !a.genres.contains(g.name)) a.genres.add(g.name);
+                for (Genre g : GENRES) {
+                    if (!g.isMood() && g.name.equals(genres.optString(i)) && !a.genres.contains(g.name)) a.genres.add(g.name);
+                }
             }
         }
         String lang = f.optString("language", "").trim().toLowerCase(java.util.Locale.ROOT);

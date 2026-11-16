@@ -11,7 +11,6 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -64,7 +63,7 @@ public class PersonActivity extends Activity {
         glow.setColors(new int[]{0x8C4A1E38, 0x0008080B});
         root.setBackground(new LayerDrawable(new Drawable[]{DiscoverUi.round(0xFF08080B, 0), glow}));
         root.setClipChildren(false);
-        ScrollView scroll = new ScrollView(this);
+        ScrollView scroll = ui.page();
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipChildren(false);
         scroll.setClipToPadding(false);
@@ -143,15 +142,9 @@ public class PersonActivity extends Activity {
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(-2, -2);
         llp.topMargin = ui.px(30);
         page.addView(ui.shelfTitle(label), llp);
-        HorizontalScrollView hs = new HorizontalScrollView(this);
-        hs.setHorizontalScrollBarEnabled(false);
-        hs.setClipChildren(false);
-        hs.setClipToPadding(false);
         LinearLayout row = new LinearLayout(this);
-        row.setClipChildren(false);
         row.setPadding(0, ui.px(14), ui.px(56), ui.px(6));
-        hs.addView(row);
-        page.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+        page.addView(ui.sideways(row, 56, 0), ui.bleed(56, 0));
         View first = null;
         for (Discover.Hit h : hits) {
             LinearLayout card = ui.card(h.picture(), h.name, 200,

@@ -329,6 +329,18 @@ final class DiscoverNet {
                 }));
     }
 
+    /** TMDB's recommendations for you, movies and series in turn; null when they couldn't be read. */
+    void recommended(TmdbAccount a, Done<java.util.List<Discover.Hit>> done) {
+        call("GET", Discover.recommendedUrl(a.objectId, "movie"), null, a.access, movies ->
+                call("GET", Discover.recommendedUrl(a.objectId, "tv"), null, a.access, series -> {
+                    if (movies == null && series == null) {
+                        done.on(null);
+                        return;
+                    }
+                    done.on(Discover.interleave(Discover.parseList(movies, "movie", 20), Discover.parseList(series, "tv", 20), 30));
+                }));
+    }
+
     /** Your own lists, null when they couldn't be read. */
     void lists(TmdbAccount a, Done<java.util.List<Discover.UserList>> done) {
         call("GET", Discover.listsUrl(a.objectId, 1), null, a.access, j -> done.on(j == null ? null : Discover.parseLists(j)));
@@ -396,8 +408,10 @@ final class DiscoverNet {
         pictures.execute(() -> {
             Bitmap b = null;
             try {
-                File f = new File(dir, size + "_" + path.replace("/", ""));
-                if (!f.exists()) save(f, Tmdb.download(Tmdb.imageUrl(path, size)));
+                // a TMDB path, or a full address (JustWatch's chart pictures)
+                boolean full = path.startsWith("https://");
+                File f = new File(dir, full ? "jw_" + sha1(path) : size + "_" + path.replace("/", ""));
+                if (!f.exists()) save(f, Tmdb.download(full ? path : Tmdb.imageUrl(path, size)));
                 b = decode(f, width);
                 if (b != null) memory.put(key, b);
             } catch (Exception e) {

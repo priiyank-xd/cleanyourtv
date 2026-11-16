@@ -12,13 +12,14 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -48,7 +49,10 @@ public class TitleActivity extends Activity {
     private View watchButton;
     private boolean pictureShown;
     private Discover.Details details;
-    private Discover.Provider primary;
+    /** Apps shown after "Watch on". */
+    private static final int MAX_APPS = 3;
+    /** The first of them (an installed one when there is one), for an episode's OK; null when none streams it. */
+    private Discover.Provider firstApp;
     private Set<String> installed;
     private DiscoverUi.Sheet sheet;
     /** Each provider's own link to this title (JustWatch), when known. */
@@ -79,7 +83,7 @@ public class TitleActivity extends Activity {
                 new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, new int[]{0xFF060608, 0x99060608, 0x00060608})}));
         root.addView(veil, new FrameLayout.LayoutParams(-1, -1));
 
-        scroll = new ScrollView(this);
+        scroll = ui.page();
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipChildren(false);
         scroll.setClipToPadding(false);
@@ -125,6 +129,10 @@ public class TitleActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            if (rateBar != null) {
+                if (e.getAction() == KeyEvent.ACTION_UP) closeRate();
+                return true;
+            }
             if (ui.open != null) {
                 if (e.getAction() == KeyEvent.ACTION_UP && ui.open != null) ui.open.close();
                 return true;
@@ -189,9 +197,11 @@ public class TitleActivity extends Activity {
     private void show(Discover.Details d) {
         details = d;
         if (!d.name.isEmpty()) name = d.name;
+        Taste.get(this).opened(kind, id, d.genreIds, d.language);
         showPicture(d.backdrop);
         installed = installedNow();
-        primary = Discover.primary(d.where, installed);
+        List<Discover.Provider> apps = Discover.apps(d.where, installed, MAX_APPS);
+        firstApp = apps.isEmpty() ? null : apps.get(0);
 
         column.removeAllViews();
         column.addView(title(name));
@@ -222,32 +232,41 @@ public class TitleActivity extends Activity {
                 awards.setVisibility(View.VISIBLE);
             }
         });
-        if (primary != null && installed.contains(Discover.packageFor(primary.id))) {
-            net.links(name, kind, id, m -> links = m);
-        }
+        boolean anyInstalled = false;
+        for (Discover.Provider p : apps) anyInstalled |= installed.contains(Discover.packageFor(p.id));
+        if (anyInstalled) net.links(name, kind, id, m -> links = m);
 
         LinearLayout buttons = buttonsRow();
-        if (primary != null) {
-            String pkg = Discover.packageFor(primary.id);
-            String label = getString(installed.contains(pkg) ? R.string.dc_watch_on : R.string.dc_get, primary.name);
-            watchButton = button(0, primary, label, v -> watch());
-            buttons.addView(watchButton, buttonLp());
-            buttons.addView(round(R.drawable.ic_dc_plus, getString(R.string.dc_save), v -> save()), roundLp());
-            if (!d.trailer.isEmpty()) buttons.addView(round(R.drawable.ic_lg_play, getString(R.string.dc_trailer), v -> trailer()), roundLp());
+        if (!apps.isEmpty()) {
+            // "Watch on" and the apps' symbols, as on Discover's hero
+            buttons.addView(ui.text(getString(R.string.dc_watch_on_apps), 15, R.string.font_medium, DiscoverUi.INK_SOFT));
+            watchButton = null;
+            for (Discover.Provider p : apps) {
+                View b = ui.appSymbol(p, installed.contains(Discover.packageFor(p.id)), v -> watch(p));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(48), ui.px(48));
+                lp.leftMargin = ui.px(watchButton == null ? 14 : 12);
+                buttons.addView(b, lp);
+                if (watchButton == null) watchButton = b;
+            }
+            LinearLayout.LayoutParams plp = roundLp();
+            plp.leftMargin = ui.px(22);
+            buttons.addView(round(R.drawable.ic_dc_plus, getString(R.string.dc_save), v -> save()), plp);
+            buttons.addView(rateButton(), roundLp());
             buttons.addView(round(R.drawable.ic_dc_more, getString(R.string.dc_more), v -> showMore()), roundLp());
         } else {
             watchButton = button(R.drawable.ic_lg_search, null, getString(R.string.dc_google), v -> google());
             buttons.addView(watchButton, buttonLp());
             buttons.addView(round(R.drawable.ic_dc_plus, getString(R.string.dc_save), v -> save()), roundLp());
-            if (!d.trailer.isEmpty()) buttons.addView(round(R.drawable.ic_lg_play, getString(R.string.dc_trailer), v -> trailer()), roundLp());
+            buttons.addView(rateButton(), roundLp());
         }
         column.addView(buttons);
+        if (!d.trailer.isEmpty()) column.addView(trailerRow());
 
-        List<Discover.Provider> also = Discover.others(d.where, primary, 3);
+        List<Discover.Provider> also = Discover.others(d.where, apps, 3);
         if (d.where.isEmpty()) {
             column.addView(line(getString(R.string.dc_not_streaming), 13, DiscoverUi.INK_DIM, 18));
-        } else if (!also.isEmpty() || primary == null) {
-            LinearLayout row = new LinearLayout(this);
+        } else if (!also.isEmpty() || apps.isEmpty()) {
+            LinearLayout row = ui.row();
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setClipChildren(false);
             if (!also.isEmpty()) {
@@ -284,23 +303,22 @@ public class TitleActivity extends Activity {
     private void showSections(Discover.Details d) {
         sections.removeAllViews();
         if (!d.seasonList.isEmpty()) {
-            LinearLayout head = new LinearLayout(this);
-            head.setGravity(Gravity.CENTER_VERTICAL);
-            head.setClipChildren(false);
-            head.addView(ui.shelfTitle(getString(R.string.dc_episodes)));
+            heading(getString(R.string.dc_episodes));
             if (d.seasonList.size() > 1) {
+                // seasons scroll sideways, so a long-running series keeps every season reachable
+                LinearLayout seasons = new LinearLayout(this);
+                seasons.setGravity(Gravity.CENTER_VERTICAL);
+                seasons.setPadding(0, ui.px(12), ui.px(56), 0);
                 for (int i = 0; i < d.seasonList.size(); i++) {
                     int number = d.seasonList.get(i)[0];
                     TextView s = ui.capsule(d.seasonNames.get(i));
                     s.setOnClickListener(v -> loadSeason(number));
                     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(36));
-                    lp.leftMargin = ui.px(i == 0 ? 18 : 10);
-                    head.addView(s, lp);
+                    if (i > 0) lp.leftMargin = ui.px(10);
+                    seasons.addView(s, lp);
                 }
+                sections.addView(ui.sideways(seasons, 56, 0), ui.bleed(56, 0));
             }
-            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(-2, -2);
-            hlp.topMargin = ui.px(20);
-            sections.addView(head, hlp);
             episodes = row();
             loadSeason(d.seasonList.get(0)[0]);
         }
@@ -331,16 +349,37 @@ public class TitleActivity extends Activity {
                 r.addView(item, lp);
             }
         }
-        if (!d.more.isEmpty()) {
-            heading(getString(R.string.dc_more_like));
-            LinearLayout r = row();
-            for (Discover.Hit h : d.more) {
-                LinearLayout card = ui.card(h.picture(), h.name, 200,
-                        v -> startActivity(intent(this, h.kind, h.id, h.name, h.backdrop)));
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(200), -2);
-                lp.rightMargin = ui.px(16);
-                r.addView(card, lp);
-            }
+        if (!d.more.isEmpty()) moreLikeThis(d);
+    }
+
+    /**
+     * More like this: TMDB's recommendations, keeping only ones you can stream (or watch free) in India, so no card
+     * leads to "Not streaming". Each title's providers are asked once a day; the shelf appears when all have answered.
+     */
+    private void moreLikeThis(Discover.Details d) {
+        List<Discover.Hit> recs = new ArrayList<>(d.more);
+        boolean[] streams = new boolean[recs.size()];
+        int[] left = {recs.size()};
+        for (int i = 0; i < recs.size(); i++) {
+            int at = i;
+            Discover.Hit h = recs.get(i);
+            net.answer(Discover.providersUrl(h.kind, h.id), 24 * DiscoverNet.HOURS, a -> {
+                if (isDestroyed() || details != d) return;
+                streams[at] = a != null && Discover.streamsHere(a.json);
+                if (--left[0] > 0) return;
+                List<Discover.Hit> keep = new ArrayList<>();
+                for (int k = 0; k < recs.size(); k++) if (streams[k]) keep.add(recs.get(k));
+                if (keep.isEmpty()) return;
+                heading(getString(R.string.dc_more_like));
+                LinearLayout r = row();
+                for (Discover.Hit m : keep) {
+                    LinearLayout card = ui.card(m.picture(), m.name, 200,
+                            v -> startActivity(intent(this, m.kind, m.id, m.name, m.backdrop)));
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(200), -2);
+                    lp.rightMargin = ui.px(16);
+                    r.addView(card, lp);
+                }
+            });
         }
     }
 
@@ -351,16 +390,9 @@ public class TitleActivity extends Activity {
     }
 
     private LinearLayout row() {
-        HorizontalScrollView hs = new HorizontalScrollView(this);
-        hs.setHorizontalScrollBarEnabled(false);
-        hs.setClipChildren(false);
-        hs.setClipToPadding(false);
         LinearLayout r = new LinearLayout(this);
-        r.setClipChildren(false);
-        r.setClipToPadding(false);
         r.setPadding(0, ui.px(14), ui.px(56), ui.px(10));
-        hs.addView(r);
-        sections.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+        sections.addView(ui.sideways(r, 56, 0), ui.bleed(56, 0));
         return r;
     }
 
@@ -372,7 +404,7 @@ public class TitleActivity extends Activity {
             episodes.removeAllViews();
             if (a == null) return;
             for (Discover.Episode e : Discover.parseSeason(a.json)) {
-                LinearLayout card = ui.card(e.still, e.number + ". " + e.name, 196, v -> watch());
+                LinearLayout card = ui.card(e.still, e.number + ". " + e.name, 196, v -> watchFirst());
                 TextView line = ui.text(Discover.episodeLine(e), 12, R.string.font_regular, DiscoverUi.INK_DIM);
                 LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ui.px(196), -2);
                 llp.topMargin = ui.px(4);
@@ -387,18 +419,199 @@ public class TitleActivity extends Activity {
 
     // ---- actions ----
 
-    private void watch() {
-        if (primary == null) {
-            google();
-            return;
-        }
-        if (!Watch.watch(this, primary, installed, name, links.get(primary.id))) {
-            Toast.makeText(this, getString(R.string.dc_cant_open, primary.name), Toast.LENGTH_SHORT).show();
+    private void watchFirst() {
+        if (firstApp == null) google();
+        else watch(firstApp);
+    }
+
+    private void watch(Discover.Provider p) {
+        if (!Watch.watch(this, p, installed, name, links.get(p.id))) {
+            Toast.makeText(this, getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
         }
     }
 
     private void save() {
         SaveSheet.open(this, ui, root, scroll, kind, id, name);
+    }
+
+    // ---- trailer ----
+
+    /** A line under Watch on: just the words "Watch trailer", a button (Home's pill around it when focused). */
+    private View trailerRow() {
+        TextView t = ui.text(getString(R.string.dc_watch_trailer), 15, R.string.font_medium, DiscoverUi.INK);
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        t.setPadding(ui.px(16), 0, ui.px(18), 0);
+        t.setContentDescription(getString(R.string.dc_trailer));
+        ui.focusBare(t, 1.06f);
+        t.setOnClickListener(v -> trailer());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
+        lp.topMargin = ui.px(6);
+        lp.leftMargin = -ui.px(16);   // the words line up with "Watch on"; the pill's padding sits outside
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    // ---- thumbs ----
+
+    private ImageView thumbIcon;
+    private View rateView;
+    /** The rating popover over the thumb button while it is open. */
+    private FrameLayout rateBar;
+    private int thumb = Discover.THUMB_NONE;
+
+    /** The thumbs button: an outline thumb until you rate, then your thumb. Reads your rating from TMDB. */
+    private View rateButton() {
+        View b = round(R.drawable.ic_dc_thumb, getString(R.string.dc_rate), v -> rate());
+        rateView = b;
+        thumbIcon = (ImageView) ((FrameLayout) b).getChildAt(0);
+        thumb = Discover.THUMB_NONE;
+        TmdbAccount a = TmdbAccount.load(this);
+        if (a != null) {
+            Discover.Details asked = details;
+            net.call("GET", Discover.statesUrl(kind, id, a.session), null, net.appToken(), j -> {
+                if (j == null || isDestroyed() || details != asked) return;
+                thumb = Discover.thumbOf(Discover.parseRated(j));
+                paintThumb();
+            });
+        }
+        return b;
+    }
+
+    private static int thumbIconOf(int t) {
+        return t == Discover.THUMB_DOWN ? R.drawable.ic_dc_thumb_down : t == Discover.THUMB_UP ? R.drawable.ic_dc_thumb_up
+                : t == Discover.THUMB_LOVE ? R.drawable.ic_dc_thumb_love : R.drawable.ic_dc_thumb;
+    }
+
+    private void paintThumb() {
+        if (thumbIcon != null) thumbIcon.setImageResource(thumbIconOf(thumb));
+    }
+
+    /**
+     * Rate, as on Netflix: a small pill pops up over the thumb button with Not for me, I like this and Love this!,
+     * the focused one's name above it. Left/Right choose, OK rates (OK on your current rating takes it back), Back
+     * closes. Saved to TMDB; signed out, a sheet offers Connect.
+     */
+    private void rate() {
+        TmdbAccount a = TmdbAccount.load(this);
+        if (a == null) {
+            sheet = ui.new Sheet(root, scroll, getString(R.string.dc_rate), name);
+            ImageView icon = new ImageView(this);
+            icon.setImageResource(R.drawable.ic_lg_profile);
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            sheet.row(icon, getString(R.string.dc_connect_to_rate), null, v -> {
+                closeSheet();
+                startActivity(new Intent(this, ConnectActivity.class));
+            }).requestFocus();
+            return;
+        }
+        if (rateBar != null || rateView == null) return;
+        int[] thumbs = {Discover.THUMB_DOWN, Discover.THUMB_UP, Discover.THUMB_LOVE};
+        int[] labels = {R.string.dc_not_for_me, R.string.dc_like_this, R.string.dc_love_this};
+        // one glass card: the three thumbs, the focused one's name under them
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        box.setClipChildren(false);
+        // solid: it sits right on top of the other buttons, which must not show through
+        android.graphics.drawable.GradientDrawable card = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF2A2C33, 0xFF1C1D22});
+        card.setCornerRadius(ui.px(22));
+        card.setStroke(Math.max(1, ui.px(1)), 0x33FFFFFF);
+        box.setBackground(card);
+        box.setElevation(ui.px(12));
+        box.setPadding(ui.px(10), ui.px(8), ui.px(10), ui.px(8));
+        TextView label = ui.text(" ", 12, R.string.font_medium, DiscoverUi.INK);
+        LinearLayout pill = ui.row();
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setClipChildren(false);
+        View focus = null;
+        for (int i = 0; i < thumbs.length; i++) {
+            int t = thumbs[i];
+            String name = getString(labels[i]);
+            FrameLayout b = new FrameLayout(this);
+            ImageView icon = new ImageView(this);
+            icon.setImageResource(thumbIconOf(t));
+            b.addView(icon, new FrameLayout.LayoutParams(ui.px(24), ui.px(24), Gravity.CENTER));
+            if (t == thumb) {
+                // your current rating: a small dot under it
+                View dot = new View(this);
+                dot.setBackground(DiscoverUi.round(0xFFFFFFFF, ui.px(2)));
+                FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(ui.px(4), ui.px(4), Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM);
+                dlp.bottomMargin = ui.px(4);
+                b.addView(dot, dlp);
+            }
+            b.setContentDescription(name);
+            b.setFocusable(true);
+            b.setClickable(true);
+            b.setAlpha(0.5f);
+            // no circle: the focused thumb just turns fully bright and grows a little
+            b.setOnFocusChangeListener((v, has) -> {
+                v.animate().alpha(has ? 1f : 0.5f).scaleX(has ? 1.25f : 1f).scaleY(has ? 1.25f : 1f).setDuration(ui.ms(150)).start();
+                if (has) label.setText(t == thumb ? getString(R.string.dc_rate_clear) : name);
+            });
+            b.setOnClickListener(v -> {
+                closeRate();
+                setThumb(a, t == thumb ? Discover.THUMB_NONE : t);
+            });
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ui.px(46), ui.px(46));
+            if (i > 0) blp.leftMargin = ui.px(4);
+            pill.addView(b, blp);
+            if (focus == null || t == thumb) focus = b;
+        }
+        box.addView(pill, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(-2, -2);
+        llp.topMargin = ui.px(4);
+        box.addView(label, llp);
+
+        // in place of the thumb button: centred on it, as Netflix's opens
+        rateBar = new FrameLayout(this);
+        rateBar.setClickable(true);
+        rateBar.setClipChildren(false);
+        int[] at = new int[2], origin = new int[2];
+        rateView.getLocationInWindow(at);
+        root.getLocationInWindow(origin);
+        box.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        int w = Math.max(box.getMeasuredWidth(), ui.px(176));   // room for the longest name, so it stays centred
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, -2);
+        lp.leftMargin = Math.max(ui.px(16), at[0] - origin[0] + rateView.getWidth() / 2 - w / 2);
+        lp.topMargin = Math.max(ui.px(16), at[1] - origin[1] + rateView.getHeight() / 2 - box.getMeasuredHeight() / 2);
+        rateBar.addView(box, lp);
+        root.addView(rateBar, new FrameLayout.LayoutParams(-1, -1));
+        scroll.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        box.setAlpha(0f);
+        box.setScaleX(0.9f);
+        box.setScaleY(0.9f);
+        box.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(ui.ms(160)).start();
+        focus.requestFocus();
+    }
+
+    private void closeRate() {
+        if (rateBar == null) return;
+        root.removeView(rateBar);
+        rateBar = null;
+        scroll.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        if (rateView != null) rateView.requestFocus();
+    }
+
+    private void setThumb(TmdbAccount a, int t) {
+        closeSheet();
+        int before = thumb;
+        if (t == before) return;
+        thumb = t;
+        paintThumb();
+        Discover.Details d = details;
+        boolean clear = t == Discover.THUMB_NONE;
+        net.call(clear ? "DELETE" : "POST", Discover.ratingUrl(kind, id, a.session),
+                clear ? null : Discover.ratingBody(Discover.thumbScore(t)), net.appToken(), j -> {
+                    if (isDestroyed()) return;
+                    if (j == null) {
+                        thumb = before;
+                        paintThumb();
+                        Toast.makeText(this, R.string.dc_save_failed, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (d != null) Taste.get(this).rated(kind, id, d.genreIds, d.language, t);
+                });
     }
 
     private void trailer() {
@@ -476,7 +689,7 @@ public class TitleActivity extends Activity {
     }
 
     private LinearLayout buttonsRow() {
-        LinearLayout row = new LinearLayout(this);
+        LinearLayout row = ui.row();
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setClipChildren(false);
         row.setClipToPadding(false);
@@ -490,7 +703,7 @@ public class TitleActivity extends Activity {
     private View button(int icon, Discover.Provider logoOf, String label, View.OnClickListener click) {
         LinearLayout b = new LinearLayout(this);
         b.setGravity(Gravity.CENTER_VERTICAL);
-        b.setPadding(ui.px(logoOf != null ? 12 : 20), 0, ui.px(22), 0);
+        b.setPadding(ui.px(16), 0, ui.px(20), 0);
         if (logoOf != null) {
             b.addView(ui.providerLogo(logoOf, 52, 28), new LinearLayout.LayoutParams(ui.px(52), ui.px(28)));
         } else if (icon != 0) {
@@ -502,7 +715,7 @@ public class TitleActivity extends Activity {
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-2, -2);
         tlp.leftMargin = ui.px(10);
         b.addView(t, tlp);
-        ui.focusGlass(b, 24);
+        ui.focusBare(b, 1.06f);   // plain at rest; Home's pill around it when focused
         b.setOnClickListener(click);
         return b;
     }
@@ -511,15 +724,17 @@ public class TitleActivity extends Activity {
         FrameLayout b = new FrameLayout(this);
         ImageView i = new ImageView(this);
         i.setImageResource(icon);
-        b.addView(i, new FrameLayout.LayoutParams(ui.px(20), ui.px(20), Gravity.CENTER));
+        b.addView(i, new FrameLayout.LayoutParams(ui.px(26), ui.px(26), Gravity.CENTER));
         b.setContentDescription(description);
-        ui.focusGlass(b, 24);
+        ui.focusBare(b, 1.06f);   // plain at rest; Home's glass circle around it when focused
         b.setOnClickListener(click);
         return b;
     }
 
     private LinearLayout.LayoutParams buttonLp() {
-        return new LinearLayout.LayoutParams(-2, ui.px(48));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(48));
+        lp.leftMargin = -ui.px(16);   // the icon lines up with the text above; the pill's padding sits outside
+        return lp;
     }
 
     private LinearLayout.LayoutParams roundLp() {

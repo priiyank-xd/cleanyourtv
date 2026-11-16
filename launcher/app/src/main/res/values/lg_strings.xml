@@ -82,13 +82,17 @@
     <string name="dc_recent" translatable="false">Recent</string>
     <string name="dc_popular" translatable="false">Popular on your apps</string>
     <string name="dc_results" translatable="false">Top results</string>
-    <string name="dc_count" translatable="false">%1$d titles</string>
+    <plurals name="dc_count" translatable="false">
+        <item quantity="one">%1$d title</item>
+        <item quantity="other">%1$d titles</item>
+    </plurals>
     <string name="dc_nothing" translatable="false">Nothing for \u201c%1$s\u201d</string>
     <string name="dc_offline" translatable="false">Can\'t reach TMDB. Check the internet connection.</string>
     <string name="dc_no_key" translatable="false">Discover needs a TMDB key in this build.</string>
     <string name="dc_loading" translatable="false">Loading\u2026</string>
     <string name="dc_load_failed" translatable="false">Couldn\'t load this title. Check the internet connection.</string>
     <string name="dc_watch_on" translatable="false">Watch on %1$s</string>
+    <string name="dc_watch_on_apps" translatable="false">Watch on</string>
     <string name="dc_get" translatable="false">Get %1$s</string>
     <string name="dc_google" translatable="false">Open in Google TV</string>
     <string name="dc_more" translatable="false">More</string>
@@ -113,7 +117,7 @@
     <string name="dc_offline_title" translatable="false">You\'re offline</string>
     <string name="dc_offline_saved" translatable="false">Offline. Showing what was saved at %1$s.</string>
     <string name="dc_retry" translatable="false">Retry</string>
-    <string name="dc_top_ten" translatable="false">Top 10 on your apps</string>
+    <string name="dc_top_ten" translatable="false">Top 10 in India on your apps</string>
     <string name="dc_new_on_apps" translatable="false">New on your apps</string>
     <string name="dc_browse" translatable="false">Browse</string>
     <string name="dc_coming_soon" translatable="false">Coming soon</string>
@@ -125,6 +129,7 @@
     <string name="dc_all_titles" translatable="false">All movies and series</string>
     <string name="dc_movies" translatable="false">Movies</string>
     <string name="dc_series" translatable="false">Series</string>
+    <string name="dc_for_you" translatable="false">For you</string>
     <string name="dc_popular_sort" translatable="false">Popular</string>
     <string name="dc_top_rated" translatable="false">Top rated</string>
     <string name="dc_newest" translatable="false">Newest</string>
@@ -143,6 +148,7 @@
     <string name="dc_imdb" translatable="false">IMDb</string>
     <string name="dc_rotten_tomatoes" translatable="false">Rotten Tomatoes</string>
     <string name="dc_trailer" translatable="false">Trailer</string>
+    <string name="dc_watch_trailer" translatable="false">Watch trailer</string>
     <string name="dc_my_lists" translatable="false">My lists</string>
     <string name="dc_save" translatable="false">Save</string>
     <string name="dc_save_to" translatable="false">Save to</string>
@@ -150,6 +156,13 @@
     <string name="dc_favourites" translatable="false">Favourites</string>
     <string name="dc_new_list" translatable="false">New list</string>
     <string name="dc_list_name" translatable="false">List name</string>
+    <string name="dc_rate" translatable="false">Rate</string>
+    <string name="dc_not_for_me" translatable="false">Not for me</string>
+    <string name="dc_like_this" translatable="false">I like this</string>
+    <string name="dc_love_this" translatable="false">Love this!</string>
+    <string name="dc_rate_clear" translatable="false">Remove rating</string>
+    <string name="dc_connect_to_rate" translatable="false">Connect TMDB to rate titles</string>
+    <string name="dc_recommended" translatable="false">Recommended for you</string>
     <string name="dc_save_failed" translatable="false">Couldn\'t save that. Check the internet connection.</string>
     <string name="dc_connect_to_save" translatable="false">Connect TMDB to save titles</string>
     <string name="dc_connect_title" translatable="false">Connect TMDB</string>

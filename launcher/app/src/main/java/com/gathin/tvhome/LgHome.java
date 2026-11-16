@@ -1353,7 +1353,7 @@ final class LgHome {
         }
     }
 
-    private static Bitmap loadWallpaper(File file, int screenWidth) {
+    static Bitmap loadWallpaper(File file, int screenWidth) {   // fork: Discover shows the same background
         if (file == null || !file.isFile()) return null;
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;

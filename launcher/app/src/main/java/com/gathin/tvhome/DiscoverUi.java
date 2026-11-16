@@ -1,7 +1,6 @@
 package com.gathin.tvhome;
 
 import android.app.Activity;
-import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
@@ -24,8 +23,9 @@ import java.util.Map;
  */
 final class DiscoverUi {
     static final int INK = 0xFFFFFFFF, INK_SOFT = 0xC7FFFFFF, INK_DIM = 0x8CFFFFFF;
-    private static final int GLASS_BASE = 0x5910141E, GLASS_TOP = 0x33FFFFFF, GLASS_BOTTOM = 0x12FFFFFF, GLASS_EDGE = 0x40FFFFFF;
-    private static final int FOCUS_TOP = 0x80FFFFFF, FOCUS_BOTTOM = 0x33FFFFFF, FOCUS_EDGE = 0xE6FFFFFF;
+    /** Home's glass, the same numbers as LgHome, so Discover's buttons match Home's (like "Open Netflix"). */
+    private static final int GLASS_BASE = LgHome.GLASS_TINT, GLASS_TOP = 0x24FFFFFF, GLASS_BOTTOM = 0x0DFFFFFF, GLASS_EDGE = 0x33FFFFFF;
+    private static final int FOCUS_TOP = 0x75FFFFFF, FOCUS_BOTTOM = 0x2EFFFFFF, FOCUS_EDGE = 0xD9FFFFFF;
 
     final Activity act;
     final Config cfg;
@@ -86,12 +86,7 @@ final class DiscoverUi {
 
     /** A sheet over the page (Where to watch, More): darker and more opaque, so its rows stay readable. */
     Drawable sheet(float radius) {
-        GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xD9282A31, 0xE618191E});
-        base.setCornerRadius(px(radius));
-        GradientDrawable edge = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0x1FFFFFFF, 0x05FFFFFF});
-        edge.setCornerRadius(px(radius));
-        edge.setStroke(Math.max(1, px(1)), 0x33FFFFFF);
-        return new LayerDrawable(new Drawable[]{base, edge});
+        return glass(radius);   // Home's panel glass
     }
 
     private Drawable glassOf(float radius, int top, int bottom, int edge, float stroke) {
@@ -165,6 +160,25 @@ final class DiscoverUi {
 
         /** A row: an optional logo or icon, a title, an optional value on the right. */
         View row(View logo, String title, String value, View.OnClickListener click) {
+            // a chosen option is a checkmark on the right, as in tvOS and Google TV menus
+            if ("\u2713".equals(value)) return rowEnd(logo, title, tick(true), click);
+            TextView v = value == null ? null : text(value, 14, R.string.font_regular, INK_DIM);
+            View row = rowEnd(logo, title, v, click);
+            if (v != null) {
+                View.OnFocusChangeListener base = row.getOnFocusChangeListener();
+                row.setOnFocusChangeListener((x, has) -> {
+                    base.onFocusChange(x, has);
+                    v.setTextColor(has ? INK : INK_DIM);
+                });
+            }
+            return row;
+        }
+
+        /**
+         * A row with any view at its right end (a checkmark, a +). Focus is a glass bar inside the sheet: it brightens
+         * but doesn't grow, so it never pokes past the sheet's edge.
+         */
+        View rowEnd(View logo, String title, View end, View.OnClickListener click) {
             LinearLayout row = new LinearLayout(act);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(px(16), 0, px(16), 0);
@@ -175,13 +189,14 @@ final class DiscoverUi {
             LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -2, 1);
             tlp.leftMargin = logo != null ? px(12) : 0;
             row.addView(t, tlp);
-            TextView v = value == null ? null : text(value, 14, R.string.font_regular, INK_DIM);
-            if (v != null) row.addView(v);
-            row.setOnFocusChangeListener((x, has) -> {
-                row.setBackground(has ? focusedGlass(16) : null);
-                row.animate().scaleX(has ? 1.03f : 1f).scaleY(has ? 1.03f : 1f).setDuration(ms(160)).start();
-                if (v != null) v.setTextColor(has ? INK : INK_DIM);
-            });
+            if (end != null) {
+                // an icon at the end is drawn at checkmark size
+                LinearLayout.LayoutParams elp = end instanceof ImageView
+                        ? new LinearLayout.LayoutParams(px(18), px(18)) : new LinearLayout.LayoutParams(-2, -2);
+                elp.leftMargin = px(12);
+                row.addView(end, elp);
+            }
+            row.setOnFocusChangeListener((x, has) -> row.setBackground(has ? focusedGlass(14) : null));
             row.setOnClickListener(click);
             list.addView(row, new LinearLayout.LayoutParams(-1, px(52)));
             return row;
@@ -231,6 +246,23 @@ final class DiscoverUi {
     }
 
     /**
+     * A button with nothing around it at rest, a little dim; focused, Home's glass pill appears around it, it turns
+     * fully bright and grows by {@code scale}.
+     */
+    void focusBare(View v, float scale) {
+        v.setFocusable(true);
+        v.setClickable(true);
+        v.setBackground(null);
+        v.setAlpha(0.7f);
+        // focused, it gets Home's "Open Netflix" pill (a circle around an icon), brightens and lifts a touch
+        v.setOnFocusChangeListener((x, has) -> {
+            v.setBackground(has ? sheet(200) : null);
+            v.animate().alpha(has ? 1f : 0.7f).scaleX(has ? scale : 1f).scaleY(has ? scale : 1f)
+                    .setDuration(ms(180)).start();
+        });
+    }
+
+    /**
      * A picture card: focus is on {@code card} (the whole tile, title included), the lift on {@code art}.
      */
     void focusArt(View card, View art, float radius) {
@@ -255,6 +287,25 @@ final class DiscoverUi {
 
     // ---- pieces ----
 
+    /** Pictures that failed, asked again as soon as another picture arrives (the network is back). */
+    private final java.util.List<Runnable> failed = new java.util.ArrayList<>();
+
+    /** Puts a TMDB picture in {@code img} when it arrives; one that fails is tried again later. */
+    void fill(ImageView img, String path, String size, int width) {
+        DiscoverNet.get(act).picture(path, size, width, b -> {
+            if (act.isDestroyed()) return;
+            if (b == null) {
+                failed.add(() -> fill(img, path, size, width));
+                return;
+            }
+            img.setImageBitmap(b);
+            if (failed.isEmpty()) return;
+            java.util.List<Runnable> again = new java.util.ArrayList<>(failed);
+            failed.clear();
+            for (Runnable r : again) r.run();
+        });
+    }
+
     /** A landscape picture with rounded corners, filled when its TMDB image arrives. */
     FrameLayout art(String path, float w, float h, float radius) {
         FrameLayout box = new FrameLayout(act);
@@ -264,9 +315,7 @@ final class DiscoverUi {
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         box.addView(img, new FrameLayout.LayoutParams(-1, -1));
         if (path != null && !path.isEmpty()) {
-            DiscoverNet.get(act).picture(path, w > 400 ? "w1280" : "w780", px(w), b -> {
-                if (b != null && !act.isDestroyed()) img.setImageBitmap(b);
-            });
+            fill(img, path, w > 400 ? "w1280" : "w780", px(w));
         }
         return box;
     }
@@ -275,6 +324,11 @@ final class DiscoverUi {
      * A title card: picture with the name under it, focusable as one. {@code w} wide, 16:9.
      */
     LinearLayout card(String picture, String name, float w, View.OnClickListener open) {
+        return card(picture, name, null, w, open);
+    }
+
+    /** A title card with a dim second line under the name ({@code sub}, such as "Series · 2020"), when given. */
+    LinearLayout card(String picture, String name, String sub, float w, View.OnClickListener open) {
         LinearLayout card = new LinearLayout(act);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setClipChildren(false);
@@ -285,6 +339,11 @@ final class DiscoverUi {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(w), -2);
         lp.topMargin = px(9);
         card.addView(t, lp);
+        if (sub != null && !sub.isEmpty()) {
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(px(w), -2);
+            slp.topMargin = px(4);
+            card.addView(text(sub, 12, R.string.font_regular, INK_DIM), slp);
+        }
         focusArt(card, pic, 12);
         card.setOnClickListener(open);
         return card;
@@ -299,9 +358,7 @@ final class DiscoverUi {
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         box.addView(img, new FrameLayout.LayoutParams(-1, -1));
         if (path != null && !path.isEmpty()) {
-            DiscoverNet.get(act).picture(path, "w342", px(w), b -> {
-                if (b != null && !act.isDestroyed()) img.setImageBitmap(b);
-            });
+            fill(img, path, "w342", px(w));
         }
         return box;
     }
@@ -320,9 +377,7 @@ final class DiscoverUi {
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         box.addView(img, new FrameLayout.LayoutParams(-1, -1));
         if (photo != null && !photo.isEmpty()) {
-            DiscoverNet.get(act).picture(photo, "w185", px(size), b -> {
-                if (b != null && !act.isDestroyed()) img.setImageBitmap(b);
-            });
+            fill(img, photo, "w185", px(size));
         }
         return box;
     }
@@ -415,25 +470,20 @@ final class DiscoverUi {
     }
 
     /** A round tick for a sheet row, in a logo-sized box: blue with a check when on, an empty ring when off. */
+    /** A checkmark for a sheet row's right end: shown when chosen, nothing (but its space) when not. */
     FrameLayout tick(boolean on) {
         FrameLayout box = new FrameLayout(act);
-        View circle = new View(act);
-        circle.setTag("circle");
-        box.addView(circle, new FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER));
         ImageView check = new ImageView(act);
         check.setTag("check");
         check.setImageResource(R.drawable.ic_lg_check);
-        box.addView(check, new FrameLayout.LayoutParams(px(14), px(14), Gravity.CENTER));
+        box.addView(check, new FrameLayout.LayoutParams(px(18), px(18), Gravity.CENTER));
+        box.setMinimumWidth(px(22));
+        box.setMinimumHeight(px(22));
         setTick(box, on);
         return box;
     }
 
     void setTick(FrameLayout box, boolean on) {
-        GradientDrawable c = new GradientDrawable();
-        c.setShape(GradientDrawable.OVAL);
-        if (on) c.setColor(0xFF0A84FF);
-        else c.setStroke(Math.max(1, px(1.5f)), 0x80FFFFFF);
-        box.findViewWithTag("circle").setBackground(c);
         box.findViewWithTag("check").setVisibility(on ? View.VISIBLE : View.INVISIBLE);
         box.setTag(on);
     }
@@ -443,8 +493,153 @@ final class DiscoverUi {
     }
 
     /** A shelf's title. */
+    /** A section heading in Home's style: small capitals, spaced out, soft white (like NEW THIS WEEK). */
     TextView shelfTitle(String s) {
-        return text(s, 16, R.string.font_medium, INK);
+        TextView t = text(s.toUpperCase(java.util.Locale.getDefault()), 13, R.string.font_medium, 0xB8FFFFFF);
+        t.setLetterSpacing(0.14f);
+        return t;
+    }
+
+    /**
+     * A sideways row that reaches out over the page's side padding ({@code left}, {@code right} design units), so a
+     * focused first or last item grows without being cut at the padding's edge. Add it with {@link #bleed}.
+     */
+    android.widget.HorizontalScrollView sideways(LinearLayout row, float left, float right) {
+        android.widget.HorizontalScrollView hs = new Rail(act, px(56));
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.setHorizontalFadingEdgeEnabled(false);
+        hs.setClipChildren(false);
+        hs.setClipToPadding(false);
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
+        row.setPadding(row.getPaddingLeft() + px(left), row.getPaddingTop(), row.getPaddingRight() + px(right), row.getPaddingBottom());
+        hs.addView(row);
+        return hs;
+    }
+
+    /**
+     * A row's scroller that keeps the focused item whole on screen, {@code edge} in from either side, so a grown
+     * focused card is never cut and the next one peeks in (as tvOS rows do); the last item stops at the same margin.
+     */
+    static final class Rail extends android.widget.HorizontalScrollView {
+        private final int edge;
+
+        Rail(android.content.Context c, int edge) {
+            super(c);
+            this.edge = edge;
+            setFocusable(false);   // only its items take focus, never the scroller itself (an invisible focus)
+        }
+
+        @Override
+        protected int computeScrollDeltaToGetChildRectOnScreen(android.graphics.Rect r) {
+            return keepInside(r.left, r.right, getScrollX(), getWidth(), getChildCount() == 0 ? 0 : getChildAt(0).getWidth(), edge);
+        }
+
+        @Override
+        public View focusSearch(View focused, int direction) {
+            return staySideways(this, focused, direction, super.focusSearch(focused, direction));
+        }
+    }
+
+    /**
+     * A row (a grid's line of cards, a row of buttons) where Left and Right never leave it: at the first or last
+     * item focus stays put instead of jumping to whatever is nearest in the row above or below.
+     */
+    static final class Row extends LinearLayout {
+        private final boolean leftOut;
+
+        Row(android.content.Context c, boolean leftOut) {
+            super(c);
+            this.leftOut = leftOut;
+        }
+
+        @Override
+        public View focusSearch(View focused, int direction) {
+            View next = super.focusSearch(focused, direction);
+            if (leftOut && direction == View.FOCUS_LEFT) return next;   // Left may leave, to a sidebar
+            return staySideways(this, focused, direction, next);
+        }
+    }
+
+    /** A {@link Row}. */
+    LinearLayout row() {
+        return new Row(act, false);
+    }
+
+    /** A {@link Row} whose Left may leave it (a grid beside a sidebar): only Right stays at the end. */
+    LinearLayout rowOpenLeft() {
+        return new Row(act, true);
+    }
+
+    /** Left or Right that would leave {@code group}: stay on {@code focused}. Other moves go to {@code next}. */
+    static View staySideways(ViewGroup group, View focused, int direction, View next) {
+        if (direction != View.FOCUS_LEFT && direction != View.FOCUS_RIGHT) return next;
+        for (View v = next; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) {
+            if (v == group) return next;
+        }
+        return focused;
+    }
+
+    /** A page that scrolls up and down the same way: the focused row stays whole, {@code edge} in from top and bottom. */
+    static final class Page extends android.widget.ScrollView {
+        private final int edge;
+
+        Page(android.content.Context c, int edge) {
+            super(c);
+            this.edge = edge;
+            setFocusable(false);   // only its items take focus, never the scroller itself (an invisible focus)
+        }
+
+        @Override
+        protected int computeScrollDeltaToGetChildRectOnScreen(android.graphics.Rect r) {
+            return keepInside(r.top, r.bottom, getScrollY(), getHeight(), getChildCount() == 0 ? 0 : getChildAt(0).getHeight(), edge);
+        }
+    }
+
+    /** A vertical page scroller for Discover's screens (see {@link Page}). */
+    android.widget.ScrollView page() {
+        return new Page(act, px(48));
+    }
+
+    /**
+     * How far to scroll so the span [{@code start}, {@code end}] sits at least {@code edge} inside a window of
+     * {@code size} now at {@code at}, never past the content's ends.
+     */
+    static int keepInside(int start, int end, int at, int size, int content, int edge) {
+        if (size <= 0) return 0;
+        int lo = at + edge, hi = at + size - edge, d = 0;
+        if (end > hi) d = end - hi;
+        if (start - d < lo) d = start - lo;
+        int max = Math.max(0, content - size);
+        return Math.max(-at, Math.min(max - at, d));
+    }
+
+    /** Full-width layout for a {@link #sideways} row, pulled out over the same padding. */
+    LinearLayout.LayoutParams bleed(float left, float right) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.leftMargin = -px(left);
+        lp.rightMargin = -px(right);
+        return lp;
+    }
+
+    /**
+     * An app to watch on, as just its symbol from Home's dock (no button around it): focused, it grows and
+     * brightens.
+     */
+    View appSymbol(Discover.Provider p, boolean installed, View.OnClickListener click) {
+        FrameLayout b = new FrameLayout(act);
+        ImageView glyph = new ImageView(act);
+        glyph.setImageDrawable(Glyphs.get(act, Discover.packageFor(p.id), p.name));
+        b.addView(glyph, new FrameLayout.LayoutParams(px(34), px(34), Gravity.CENTER));
+        b.setContentDescription(act.getString(installed ? R.string.dc_watch_on : R.string.dc_get, p.name));
+        // app symbols stay bare even when focused: they grow and brighten, no pill
+        b.setFocusable(true);
+        b.setClickable(true);
+        b.setAlpha(0.7f);
+        b.setOnFocusChangeListener((x, has) -> x.animate().alpha(has ? 1f : 0.7f)
+                .scaleX(has ? 1.3f : 1f).scaleY(has ? 1.3f : 1f).setDuration(ms(180)).start());
+        b.setOnClickListener(click);
+        return b;
     }
 
     /** A capsule of text that is glass, brighter while focused. */
@@ -479,9 +674,7 @@ final class DiscoverUi {
         img.setClipToOutline(true);
         float side = Math.min(w, h);
         box.addView(img, new FrameLayout.LayoutParams(px(side), px(side), Gravity.CENTER));
-        DiscoverNet.get(act).picture(p.logo, "w92", px(side), (Bitmap b) -> {
-            if (b != null && !act.isDestroyed()) img.setImageBitmap(b);
-        });
+        fill(img, p.logo, "w92", px(side));
         return box;
     }
 }

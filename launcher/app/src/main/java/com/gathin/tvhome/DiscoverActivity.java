@@ -65,6 +65,7 @@ public class DiscoverActivity extends Activity {
         glow.setColors(new int[]{0x8C1E2C48, 0x0008080B});
         root.setBackground(new LayerDrawable(new Drawable[]{DiscoverUi.round(0xFF08080B, 0), glow}));
         root.setClipChildren(false);
+        backdrop();
         pages = new FrameLayout(this);
         pages.setClipChildren(false);
         root.addView(pages, new FrameLayout.LayoutParams(-1, -1));
@@ -172,6 +173,36 @@ public class DiscoverActivity extends Activity {
         return ui;
     }
 
+    /**
+     * Home's background behind Search and My lists: the same picture Home shows right now (its movie art, or the
+     * theme's wallpaper), dimmed under a dark wash so the glass and text on top stay easy to read. The Discover tab
+     * draws its own hero over it. With neither, the plain dark glow stays.
+     */
+    private void backdrop() {
+        int width = getResources().getDisplayMetrics().widthPixels;
+        ImageView art = new ImageView(this);
+        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.setAlpha(0.55f);
+        java.util.List<Tmdb.Title> titles = feed.artTitles();
+        if (Config.LG_MOVIE_ART.equals(Config.lgBackground(this)) && !titles.isEmpty()) {
+            // the same pick as Home's movie art at this moment
+            Tmdb.Title want = titles.get(Tmdb.artIndex(System.currentTimeMillis(),
+                    Config.lgArtMinutes(this) * 60_000L, titles.size()));
+            feed.decodeArt(want, width, b -> {
+                if (b != null && !isDestroyed()) art.setImageBitmap(b);
+            });
+        } else {
+            android.graphics.Bitmap wallpaper = LgHome.loadWallpaper(Config.load(this).wallpaper, width);
+            if (wallpaper == null) return;
+            art.setImageBitmap(wallpaper);
+        }
+        root.addView(art, new FrameLayout.LayoutParams(-1, -1));
+        View wash = new View(this);
+        wash.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xB308080B, 0x9908080B, 0xE608080B}));
+        root.addView(wash, new FrameLayout.LayoutParams(-1, -1));
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -197,6 +228,17 @@ public class DiscoverActivity extends Activity {
                 }
             }
             return true;
+        }
+        // Up into the tab bar always lands on the tab you are on, never on whichever tab is nearest
+        if (e.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP && e.getAction() == KeyEvent.ACTION_DOWN && current >= 0) {
+            View f = getCurrentFocus();
+            if (f != null && f.getParent() != bar && ui.open == null) {
+                View next = f.focusSearch(View.FOCUS_UP);
+                if (next != null && next.getParent() == bar) {
+                    tabs[current].requestFocus();
+                    return true;
+                }
+            }
         }
         return super.dispatchKeyEvent(e);
     }
