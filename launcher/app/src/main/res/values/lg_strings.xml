@@ -105,4 +105,39 @@
     <string name="dc_get_app" translatable="false">Get app</string>
     <string name="dc_search_it" translatable="false">Search</string>
     <string name="dc_cant_open" translatable="false">Couldn\'t open %1$s</string>
+    <string name="dc_people" translatable="false">People</string>
+    <string name="dc_titles" translatable="false">Movies and series</string>
+    <string name="dc_popular_hero" translatable="false">Popular on your apps</string>
+    <string name="dc_details" translatable="false">Details</string>
+    <string name="dc_watch" translatable="false">Watch</string>
+    <string name="dc_offline_title" translatable="false">You\'re offline</string>
+    <string name="dc_offline_saved" translatable="false">Offline. Showing what was saved at %1$s.</string>
+    <string name="dc_retry" translatable="false">Retry</string>
+    <string name="dc_top_ten" translatable="false">Top 10 on your apps</string>
+    <string name="dc_new_on_apps" translatable="false">New on your apps</string>
+    <string name="dc_browse" translatable="false">Browse</string>
+    <string name="dc_coming_soon" translatable="false">Coming soon</string>
+    <string name="dc_in_cinemas" translatable="false">In cinemas %1$s</string>
+    <string name="dc_episodes" translatable="false">Episodes</string>
+    <string name="dc_cast" translatable="false">Cast and crew</string>
+    <string name="dc_more_like" translatable="false">More like this</string>
+    <string name="dc_known_for" translatable="false">Known for</string>
+    <string name="dc_all_titles" translatable="false">All movies and series</string>
+    <string name="dc_movies" translatable="false">Movies</string>
+    <string name="dc_series" translatable="false">Series</string>
+    <string name="dc_popular_sort" translatable="false">Popular</string>
+    <string name="dc_top_rated" translatable="false">Top rated</string>
+    <string name="dc_newest" translatable="false">Newest</string>
+    <string name="dc_sort" translatable="false">Sort</string>
+    <string name="dc_language" translatable="false">Language</string>
+    <string name="dc_genre" translatable="false">Genre</string>
+    <string name="dc_any_language" translatable="false">Any language</string>
+    <string name="dc_any_genre" translatable="false">Any genre</string>
+    <string name="dc_only_mine" translatable="false">Only my apps</string>
+    <string name="dc_count_mine" translatable="false">%1$,d on your apps</string>
+    <string name="dc_count_all" translatable="false">%1$,d titles</string>
+    <string name="dc_none_here" translatable="false">Nothing here yet. Try another filter.</string>
+    <string name="dc_movie" translatable="false">Movie</string>
+    <string name="dc_one_series" translatable="false">Series</string>
+    <string name="dc_pair" translatable="false">%1$s \u00b7 %2$s</string>
 </resources>

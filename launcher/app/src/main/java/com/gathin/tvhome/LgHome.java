@@ -1302,7 +1302,7 @@ final class LgHome {
 
     /** Fork: Search on Home opens Discover or Google TV's search, as the Settings menu says; a hold opens the other. */
     private void openSearch(boolean hold) {
-        if (HubChoices.searchOpensDiscover(Config.lgSearchButton(act), hold)) start(new Intent(act, SearchActivity.class));
+        if (HubChoices.searchOpensDiscover(Config.lgSearchButton(act), hold)) start(DiscoverActivity.intent(act, DiscoverActivity.TAB_SEARCH));
         else search(null);
     }
 

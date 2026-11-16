@@ -9,6 +9,7 @@ import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -108,6 +109,96 @@ final class DiscoverUi {
         return g;
     }
 
+    // ---- sheets ----
+
+    /**
+     * A glass sheet over a page, on the right: a title, an optional line under it, and rows. The page behind can't
+     * take focus while it is open; closing it gives focus back to what had it.
+     */
+    final class Sheet {
+        private final FrameLayout root, overlay;
+        private final ViewGroup behind;
+        private final View before;
+        final LinearLayout list;
+
+        Sheet(FrameLayout root, ViewGroup behind, String title, String sub) {
+            this.root = root;
+            this.behind = behind;
+            before = act.getCurrentFocus();
+            overlay = new FrameLayout(act);
+            overlay.setBackgroundColor(0x59000000);
+            overlay.setClickable(true);
+            LinearLayout panel = new LinearLayout(act);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            panel.setBackground(sheet(28));
+            panel.setPadding(px(18), px(24), px(18), px(18));
+            panel.setClipChildren(false);
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-1, -2);
+            tlp.leftMargin = px(16);
+            panel.addView(text(title, 22, R.string.font_medium, INK), tlp);
+            if (sub != null) {
+                LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
+                slp.setMargins(px(16), px(6), 0, px(6));
+                panel.addView(text(sub, 12, R.string.font_regular, INK_DIM), slp);
+            }
+            android.widget.ScrollView scroll = new android.widget.ScrollView(act);
+            scroll.setVerticalScrollBarEnabled(false);
+            scroll.setClipToPadding(false);
+            list = new LinearLayout(act);
+            list.setOrientation(LinearLayout.VERTICAL);
+            list.setPadding(0, px(6), 0, px(6));
+            list.setClipChildren(false);
+            scroll.addView(list, new android.widget.ScrollView.LayoutParams(-1, -2));
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
+            sp.topMargin = px(8);
+            panel.addView(scroll, sp);
+            FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(px(388), -2, Gravity.END | Gravity.TOP);
+            plp.setMargins(0, px(24), px(24), px(24));
+            overlay.addView(panel, plp);
+            root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+            behind.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        }
+
+        /** A row: an optional logo or icon, a title, an optional value on the right. */
+        View row(View logo, String title, String value, View.OnClickListener click) {
+            LinearLayout row = new LinearLayout(act);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(px(16), 0, px(16), 0);
+            row.setFocusable(true);
+            row.setClickable(true);
+            if (logo != null) row.addView(logo, new LinearLayout.LayoutParams(px(46), px(26)));
+            TextView t = text(title, 15, R.string.font_regular, INK);
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -2, 1);
+            tlp.leftMargin = logo != null ? px(12) : 0;
+            row.addView(t, tlp);
+            TextView v = value == null ? null : text(value, 14, R.string.font_regular, INK_DIM);
+            if (v != null) row.addView(v);
+            row.setOnFocusChangeListener((x, has) -> {
+                row.setBackground(has ? focusedGlass(16) : null);
+                row.animate().scaleX(has ? 1.03f : 1f).scaleY(has ? 1.03f : 1f).setDuration(ms(160)).start();
+                if (v != null) v.setTextColor(has ? INK : INK_DIM);
+            });
+            row.setOnClickListener(click);
+            list.addView(row, new LinearLayout.LayoutParams(-1, px(52)));
+            return row;
+        }
+
+        /** A small group heading between rows. */
+        void group(String label) {
+            TextView head = text(label.toUpperCase(java.util.Locale.ROOT), 12, R.string.font_medium, 0x80FFFFFF);
+            head.setLetterSpacing(0.12f);
+            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(-1, -2);
+            hlp.setMargins(px(16), px(12), 0, px(6));
+            list.addView(head, hlp);
+        }
+
+        void close() {
+            root.removeView(overlay);
+            behind.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+            if (before != null) before.requestFocus();
+        }
+    }
+
     // ---- focus ----
 
     /** Glass that brightens, glows and lifts a little while focused. */
@@ -181,6 +272,91 @@ final class DiscoverUi {
         focusArt(card, pic, 12);
         card.setOnClickListener(open);
         return card;
+    }
+
+    /** A portrait poster with rounded corners (TMDB w342), filled when it arrives. */
+    FrameLayout poster(String path, float w, float h, float radius) {
+        FrameLayout box = new FrameLayout(act);
+        box.setBackground(round(0x1FFFFFFF, px(radius)));
+        box.setClipToOutline(true);
+        ImageView img = new ImageView(act);
+        img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        box.addView(img, new FrameLayout.LayoutParams(-1, -1));
+        if (path != null && !path.isEmpty()) {
+            DiscoverNet.get(act).picture(path, "w342", px(w), b -> {
+                if (b != null && !act.isDestroyed()) img.setImageBitmap(b);
+            });
+        }
+        return box;
+    }
+
+    /** A person's round photo, or their initials on a soft colour when TMDB has none. */
+    FrameLayout avatar(String photo, String name, float size) {
+        FrameLayout box = new FrameLayout(act);
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, tones(name));
+        bg.setShape(GradientDrawable.OVAL);
+        box.setBackground(bg);
+        box.setClipToOutline(true);
+        TextView initials = text(initials(name), size / 3.2f, R.string.font_medium, INK);
+        initials.setGravity(Gravity.CENTER);
+        box.addView(initials, new FrameLayout.LayoutParams(-1, -1));
+        ImageView img = new ImageView(act);
+        img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        box.addView(img, new FrameLayout.LayoutParams(-1, -1));
+        if (photo != null && !photo.isEmpty()) {
+            DiscoverNet.get(act).picture(photo, "w185", px(size), b -> {
+                if (b != null && !act.isDestroyed()) img.setImageBitmap(b);
+            });
+        }
+        return box;
+    }
+
+    /** Focus for a round photo: it lifts with a bright rim. */
+    void focusRound(View item, View photo) {
+        item.setFocusable(true);
+        item.setClickable(true);
+        item.setOnFocusChangeListener((x, has) -> {
+            GradientDrawable rim = new GradientDrawable();
+            rim.setShape(GradientDrawable.OVAL);
+            rim.setStroke(Math.max(1, px(1.5f)), 0xD9FFFFFF);
+            photo.setForeground(has ? rim : null);
+            photo.animate().scaleX(has ? 1.1f : 1f).scaleY(has ? 1.1f : 1f).setDuration(ms(200)).start();
+            photo.setElevation(has ? px(14) : 0);
+        });
+    }
+
+    static String initials(String name) {
+        StringBuilder b = new StringBuilder();
+        for (String w : name.trim().split("\\s+")) {
+            if (!w.isEmpty() && b.length() < 2) b.appendCodePoint(w.codePointAt(0));
+        }
+        return b.toString().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static int[] tones(String name) {
+        int[] hues = {200, 28, 330, 160, 260, 45};
+        int h = hues[Math.abs(name.hashCode()) % hues.length];
+        return new int[]{android.graphics.Color.HSVToColor(new float[]{h, 0.35f, 0.42f}),
+                android.graphics.Color.HSVToColor(new float[]{(h + 60) % 360, 0.4f, 0.2f})};
+    }
+
+    /** A page's big title: a size smaller for long names, so two lines hold them. */
+    void sizeTitle(TextView t, String name) {
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, (name != null && name.length() > 28 ? 38 : 46) * u);
+    }
+
+    /** A shelf's title. */
+    TextView shelfTitle(String s) {
+        return text(s, 16, R.string.font_medium, INK);
+    }
+
+    /** A capsule of text that is glass, brighter while focused. */
+    TextView capsule(String s) {
+        TextView t = text(s, 14, R.string.font_medium, INK);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(px(18), 0, px(18), 0);
+        focusGlass(t, 20);
+        return t;
     }
 
     /** An app's logo: the launcher's bundled wordmark when it has one, else TMDB's logo for the service. */

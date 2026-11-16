@@ -1,12 +1,7 @@
 package com.gathin.tvhome;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.LayerDrawable;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
@@ -32,67 +27,59 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Discover's search screen (fork only), opened by Search on Home. The field is focused and the TV's own keyboard
- * (Gboard on Google TV) is up when it opens, so typing or the keyboard's mic starts at once. Results follow the
- * typing; their first row sits above the keyboard, and Search on the keyboard closes it and moves to the results.
- * An empty field shows recent searches and what's popular on your apps. Back from the results returns to the field,
- * and Back from the field returns to Home.
+ * Discover's Search tab (fork only). The field takes focus with the TV's own keyboard (Gboard on Google TV) up, so
+ * typing or the keyboard's mic starts at once. Results follow the typing: people first, then titles; the first row
+ * sits above the keyboard, and Search on the keyboard closes it and moves to the results. An empty field shows
+ * recent searches and what's popular on your apps.
  */
-public class SearchActivity extends Activity {
+final class SearchPane implements DiscoverActivity.Pane {
     private static final String PREFS = "discover", RECENT_KEY = "recent";
     private static final long TYPE_PAUSE_MS = 350;
     private static final float CARD_W = 200, GAP = 16;
-    private static final int COLUMNS = 4;
+    private static final int COLUMNS = 4, MAX_PEOPLE = 6;
 
-    private DiscoverUi ui;
-    private DiscoverNet net;
-    private TmdbFeed feed;
-    private SharedPreferences prefs;
+    private final DiscoverActivity act;
+    private final DiscoverUi ui;
+    private final DiscoverNet net;
+    private final TmdbFeed feed;
+    private final SharedPreferences prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private EditText field;
-    private FrameLayout fieldBox;
-    private ScrollView scroll;
-    private LinearLayout content;
+    private final FrameLayout page;
+    private final EditText field;
+    private final FrameLayout fieldBox;
+    private final ScrollView scroll;
+    private final LinearLayout content;
     /** The first focusable result, where Down from the field and Search on the keyboard go. */
     private View firstResult;
     /** Answers to older queries are dropped. */
     private int seq;
-    private final Runnable typed = () -> run(field.getText().toString());
+    private final Runnable typed;
 
-    @Override
-    protected void onCreate(Bundle state) {
-        super.onCreate(state);
-        ui = new DiscoverUi(this);
-        net = DiscoverNet.get(this);
-        feed = new TmdbFeed(this, BuildConfig.TMDB_TOKEN);
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+    SearchPane(DiscoverActivity act, DiscoverUi ui, TmdbFeed feed) {
+        this.act = act;
+        this.ui = ui;
+        this.feed = feed;
+        net = DiscoverNet.get(act);
+        prefs = act.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        page = new FrameLayout(act);
+        page.setClipChildren(false);
 
-        FrameLayout root = new FrameLayout(this);
-        GradientDrawable glow = new GradientDrawable();
-        glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        glow.setGradientCenter(0.5f, 0f);
-        glow.setGradientRadius(ui.px(620));
-        glow.setColors(new int[]{0x8C1E2C48, 0x0008080B});
-        root.setBackground(new LayerDrawable(new Drawable[]{DiscoverUi.round(0xFF08080B, 0), glow}));
-        root.setClipChildren(false);
-
-        // the search field: a glass capsule, brighter while it has focus
-        fieldBox = new FrameLayout(this);
-        fieldBox.setBackground(ui.glass(26));
-        ImageView icon = new ImageView(this);
+        fieldBox = new FrameLayout(act);
+        fieldBox.setBackground(ui.field(26, false));
+        ImageView icon = new ImageView(act);
         icon.setImageResource(R.drawable.ic_lg_search);
         icon.setAlpha(0.75f);
         FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(ui.px(20), ui.px(20), Gravity.CENTER_VERTICAL);
         ilp.leftMargin = ui.px(22);
         fieldBox.addView(icon, ilp);
-        field = new EditText(this);
+        field = new EditText(act);
         field.setId(View.generateViewId());
         field.setBackground(null);
         field.setTextColor(DiscoverUi.INK);
         field.setHintTextColor(0x66FFFFFF);
         field.setHint(R.string.dc_search_hint);
         field.setTextSize(TypedValue.COMPLEX_UNIT_PX, ui.px(20));
-        field.setTypeface(UiFont.get(this, R.string.font_regular));
+        field.setTypeface(UiFont.get(act, R.string.font_regular));
         field.setSingleLine(true);
         field.setInputType(InputType.TYPE_CLASS_TEXT);
         field.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
@@ -102,25 +89,25 @@ public class SearchActivity extends Activity {
         flp.rightMargin = ui.px(22);
         fieldBox.addView(field, flp);
         field.setOnFocusChangeListener((v, has) -> fieldBox.setBackground(ui.field(26, has)));
-        ui.place(root, fieldBox, 180, 40, 600, 52);
+        ui.place(page, fieldBox, 180, 82, 600, 52);
 
-        scroll = new ScrollView(this);
+        scroll = new ScrollView(act);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipToPadding(false);
         scroll.setClipChildren(false);
         scroll.setVerticalFadingEdgeEnabled(true);
         scroll.setFadingEdgeLength(ui.px(24));
-        content = new LinearLayout(this);
+        content = new LinearLayout(act);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setClipChildren(false);
         content.setClipToPadding(false);
         content.setPadding(ui.px(56), ui.px(14), ui.px(56), ui.px(48));
         scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
         FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(-1, -1);
-        slp.topMargin = ui.px(108);
-        root.addView(scroll, slp);
-        setContentView(root);
+        slp.topMargin = ui.px(150);
+        page.addView(scroll, slp);
 
+        typed = () -> run(field.getText().toString());
         field.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {
             }
@@ -140,47 +127,40 @@ public class SearchActivity extends Activity {
             handler.removeCallbacks(typed);
             run(field.getText().toString());
             remember(field.getText().toString());
-            hideKeyboard();
+            keyboard(false);
             if (firstResult != null) firstResult.requestFocus();
             return true;
         });
         field.setOnKeyListener((v, code, e) -> {
             if (code == KeyEvent.KEYCODE_DPAD_DOWN && e.getAction() == KeyEvent.ACTION_DOWN && firstResult != null) {
-                hideKeyboard();
+                keyboard(false);
                 firstResult.requestFocus();
                 return true;
             }
             return false;
         });
-
         run("");
+    }
+
+    @Override public View view() {
+        return page;
+    }
+
+    @Override public void enter() {
         field.requestFocus();
+        keyboard(true);
     }
 
-    @Override
-    public boolean dispatchKeyEvent(KeyEvent e) {
-        // Back from the results returns to the field, at the top; Back from the field returns to Home.
-        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && !field.hasFocus()) {
-            if (e.getAction() == KeyEvent.ACTION_UP) {
-                field.requestFocus();
-                scroll.smoothScrollTo(0, 0);
-            }
-            return true;
-        }
-        return super.dispatchKeyEvent(e);
+    @Override public void shown() {
     }
 
-    @Override
-    protected void onDestroy() {
+    @Override public void leave() {
+        keyboard(false);
+        scroll.smoothScrollTo(0, 0);
+    }
+
+    @Override public void destroy() {
         handler.removeCallbacksAndMessages(null);
-        feed.shutdown();
-        super.onDestroy();
-    }
-
-    @Override
-    public void onTrimMemory(int level) {
-        super.onTrimMemory(level);
-        if (level >= TRIM_MEMORY_UI_HIDDEN) net.trimMemory();
     }
 
     // ---- searching ----
@@ -193,17 +173,18 @@ public class SearchActivity extends Activity {
             return;
         }
         if (!net.enabled()) {
-            showMessage(getString(R.string.dc_no_key));
+            showMessage(act.getString(R.string.dc_no_key));
             return;
         }
-        net.search(q, hits -> {
-            if (mine != seq || isDestroyed()) return;
-            if (hits == null) {
-                showMessage(getString(R.string.dc_offline));
-                content.addView(new View(this), new LinearLayout.LayoutParams(1, ui.px(26)));
-                popular();   // what was saved last time, so the screen is never empty
+        net.search(q, answer -> {
+            if (mine != seq || act.isDestroyed()) return;
+            if (answer == null) {
+                showMessage(act.getString(R.string.dc_offline));
+                gap(26);
+                popular();   // what was saved last time, so the page is never empty
+            } else {
+                showResults(q, Discover.parsePeople(answer, MAX_PEOPLE), Discover.parseSearch(answer, Discover.MAX_RESULTS));
             }
-            else showResults(q, hits);
         });
     }
 
@@ -212,58 +193,68 @@ public class SearchActivity extends Activity {
         prefs.edit().putString(RECENT_KEY, Discover.joinRecent(recent)).apply();
     }
 
-    // ---- what the screen shows ----
+    private void keyboard(boolean show) {
+        InputMethodManager imm = (InputMethodManager) act.getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm == null) return;
+        if (show) field.post(() -> imm.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT));
+        else imm.hideSoftInputFromWindow(field.getWindowToken(), 0);
+    }
+
+    // ---- what the page shows ----
 
     /** An empty field: recent searches, then what's popular on your apps. */
     private void showStart() {
         clear();
         List<String> recent = Discover.splitRecent(prefs.getString(RECENT_KEY, null));
         if (!recent.isEmpty()) {
-            label(getString(R.string.dc_recent), null);
-            HorizontalScrollView hs = new HorizontalScrollView(this);
-            hs.setHorizontalScrollBarEnabled(false);
-            hs.setClipChildren(false);
-            hs.setClipToPadding(false);
-            LinearLayout row = new LinearLayout(this);
-            row.setClipChildren(false);
-            row.setPadding(0, ui.px(4), 0, ui.px(4));
+            label(act.getString(R.string.dc_recent), null);
+            LinearLayout row = shelfRow();
             for (String r : recent) {
-                TextView chip = ui.text(r, 14, R.string.font_medium, DiscoverUi.INK);
-                chip.setGravity(Gravity.CENTER);
-                chip.setPadding(ui.px(18), 0, ui.px(18), 0);
-                ui.focusGlass(chip, 20);
+                TextView chip = ui.capsule(r);
                 chip.setOnClickListener(v -> {
                     field.setText(r);
                     field.setSelection(r.length());
                     handler.removeCallbacks(typed);
                     run(r);
                 });
+                chip.setNextFocusUpId(field.getId());
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(40));
                 lp.rightMargin = ui.px(12);
                 row.addView(chip, lp);
                 if (firstResult == null) firstResult = chip;
-                chip.setNextFocusUpId(field.getId());
             }
-            hs.addView(row);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-            lp.bottomMargin = ui.px(26);
-            content.addView(hs, lp);
+            gap(26);
         }
         popular();
     }
 
-    private void showResults(String q, List<Discover.Hit> hits) {
+    private void showResults(String q, List<Discover.Hit> people, List<Discover.Hit> titles) {
         clear();
-        if (hits.isEmpty()) {
-            label(getString(R.string.dc_nothing, q), null);
-            content.addView(new View(this), new LinearLayout.LayoutParams(1, ui.px(14)));
+        if (people.isEmpty() && titles.isEmpty()) {
+            label(act.getString(R.string.dc_nothing, q), null);
+            gap(14);
             popular();
             return;
         }
-        label(getString(R.string.dc_results), getString(R.string.dc_count, hits.size()));
-        List<Item> items = new ArrayList<>();
-        for (Discover.Hit h : hits) items.add(new Item(h.picture(), h.name, h.kind, h.id, h.backdrop));
-        grid(items);
+        if (!people.isEmpty()) {
+            label(act.getString(R.string.dc_people), null);
+            LinearLayout row = shelfRow();
+            for (Discover.Hit p : people) {
+                View item = person(p);
+                item.setNextFocusUpId(field.getId());
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+                lp.rightMargin = ui.px(30);
+                row.addView(item, lp);
+                if (firstResult == null) firstResult = item;
+            }
+            gap(24);
+        }
+        if (!titles.isEmpty()) {
+            label(act.getString(R.string.dc_titles), act.getString(R.string.dc_count, titles.size()));
+            List<Item> items = new ArrayList<>();
+            for (Discover.Hit h : titles) items.add(new Item(h.picture(), h.name, h.kind, h.id, h.backdrop));
+            grid(items);
+        }
     }
 
     private void showMessage(String message) {
@@ -284,7 +275,7 @@ public class SearchActivity extends Activity {
             if (seen.add(t.kind + t.id)) items.add(new Item(t.backdrop, t.name, t.kind, t.id, t.backdrop));
         }
         if (items.isEmpty()) return;
-        label(getString(R.string.dc_popular), null);
+        label(act.getString(R.string.dc_popular), null);
         grid(items);
     }
 
@@ -293,10 +284,14 @@ public class SearchActivity extends Activity {
         firstResult = null;
     }
 
+    private void gap(float units) {
+        content.addView(new View(act), new LinearLayout.LayoutParams(1, ui.px(units)));
+    }
+
     private void label(String title, String note) {
-        LinearLayout line = new LinearLayout(this);
+        LinearLayout line = new LinearLayout(act);
         line.setGravity(Gravity.BOTTOM);
-        line.addView(ui.text(title, 16, R.string.font_medium, DiscoverUi.INK));
+        line.addView(ui.shelfTitle(title));
         if (note != null) {
             TextView n = ui.text(note, 13, R.string.font_regular, 0x80FFFFFF);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
@@ -306,6 +301,46 @@ public class SearchActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.bottomMargin = ui.px(14);
         content.addView(line, lp);
+    }
+
+    /** A horizontally scrolling row, added to the page. */
+    private LinearLayout shelfRow() {
+        HorizontalScrollView hs = new HorizontalScrollView(act);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.setClipChildren(false);
+        hs.setClipToPadding(false);
+        LinearLayout row = new LinearLayout(act);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClipChildren(false);
+        row.setPadding(0, ui.px(6), ui.px(40), ui.px(6));
+        hs.addView(row);
+        content.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+        return row;
+    }
+
+    /** A person: round photo, name and what they do; OK opens their page. */
+    private View person(Discover.Hit p) {
+        LinearLayout item = new LinearLayout(act);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setClipChildren(false);
+        FrameLayout photo = ui.avatar(p.poster, p.name, 64);
+        item.addView(photo, new LinearLayout.LayoutParams(ui.px(64), ui.px(64)));
+        LinearLayout words = new LinearLayout(act);
+        words.setOrientation(LinearLayout.VERTICAL);
+        words.addView(ui.text(p.name, 14, R.string.font_medium, DiscoverUi.INK));
+        TextView role = ui.text(PersonActivity.role(p.sub), 12, R.string.font_regular, DiscoverUi.INK_DIM);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-2, -2);
+        rlp.topMargin = ui.px(4);
+        words.addView(role, rlp);
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(-2, -2);
+        wlp.leftMargin = ui.px(12);
+        item.addView(words, wlp);
+        ui.focusRound(item, photo);
+        item.setOnClickListener(v -> {
+            remember(field.getText().toString());
+            act.startActivity(PersonActivity.intent(act, p.id, p.name, p.poster));
+        });
+        return item;
     }
 
     private static final class Item {
@@ -327,7 +362,7 @@ public class SearchActivity extends Activity {
         boolean firstRow = firstResult == null;
         for (int i = 0; i < items.size(); i++) {
             if (i % COLUMNS == 0) {
-                row = new LinearLayout(this);
+                row = new LinearLayout(act);
                 row.setClipChildren(false);
                 LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
                 rlp.bottomMargin = ui.px(22);
@@ -342,16 +377,10 @@ public class SearchActivity extends Activity {
             row.addView(card, lp);
             if (firstResult == null) firstResult = card;
         }
-        if (firstResult != null) field.setNextFocusDownId(firstResult.getId() == View.NO_ID ? View.NO_ID : firstResult.getId());
     }
 
     private void open(Item it) {
         remember(field.getText().toString());
-        startActivity(TitleActivity.intent(this, it.kind, it.id, it.name, it.backdrop));
-    }
-
-    private void hideKeyboard() {
-        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (imm != null) imm.hideSoftInputFromWindow(field.getWindowToken(), 0);
+        act.startActivity(TitleActivity.intent(act, it.kind, it.id, it.name, it.backdrop));
     }
 }

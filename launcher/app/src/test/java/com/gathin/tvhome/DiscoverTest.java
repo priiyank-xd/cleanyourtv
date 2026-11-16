@@ -104,4 +104,87 @@ public class DiscoverTest {
         assertEquals("com.netflix.ninja", Discover.packageFor(8));
         assertNull(Discover.packageFor(99999));
     }
+
+    @Test public void searchFindsPeopleSeparately() throws Exception {
+        JSONObject a = new JSONObject("{\"results\":[{\"media_type\":\"person\",\"id\":1,\"name\":\"Meera Iyer\","
+                + "\"profile_path\":\"/m.jpg\",\"known_for_department\":\"Acting\"},{\"media_type\":\"tv\",\"id\":2,\"name\":\"X\"}]}");
+        List<Discover.Hit> people = Discover.parsePeople(a, 6);
+        assertEquals(1, people.size());
+        assertEquals("/m.jpg", people.get(0).poster);
+        assertEquals("Acting", people.get(0).sub);
+        assertTrue(people.get(0).isPerson());
+    }
+
+    @Test public void listsMergeByPopularityWithoutRepeats() throws Exception {
+        List<Discover.Hit> movies = Discover.parseList(new JSONObject("{\"results\":[{\"id\":1,\"title\":\"A\",\"popularity\":5},"
+                + "{\"id\":2,\"title\":\"B\",\"popularity\":50}]}"), "movie", 20);
+        List<Discover.Hit> tv = Discover.parseList(new JSONObject("{\"results\":[{\"id\":1,\"name\":\"C\",\"popularity\":20}]}"), "tv", 20);
+        List<Discover.Hit> both = Discover.merge(movies, tv, 10);
+        assertEquals(Arrays.asList("B", "C", "A"), Arrays.asList(both.get(0).name, both.get(1).name, both.get(2).name));
+        assertEquals(2, Discover.merge(both, movies, 2).size());
+    }
+
+    @Test public void shelvesAskForYourAppsInIndia() {
+        java.time.LocalDate today = java.time.LocalDate.of(2026, 11, 16);
+        String hero = Discover.popularUrl("movie", new java.util.LinkedHashSet<>(Arrays.asList(8, 119)), 90, today);
+        assertTrue(hero.contains("discover/movie?watch_region=IN"));
+        assertTrue(hero.contains("with_watch_providers=8%7C119"));
+        assertTrue(hero.contains("primary_release_date.gte=2026-08-18"));
+        String top = Discover.popularUrl("tv", new java.util.LinkedHashSet<>(Arrays.asList(8)), 0, today);
+        assertTrue(top.contains("without_genres="));
+        assertTrue(!top.contains("first_air_date.gte"));
+    }
+
+    @Test public void comingSoonKeepsOnlyFutureDatesSoonestFirst() throws Exception {
+        List<Discover.Hit> list = Discover.parseList(new JSONObject("{\"results\":[{\"id\":1,\"title\":\"Later\",\"release_date\":\"2026-12-25\"},"
+                + "{\"id\":2,\"title\":\"Past\",\"release_date\":\"2026-11-01\"},{\"id\":3,\"title\":\"Soon\",\"release_date\":\"2026-12-04\"},"
+                + "{\"id\":4,\"title\":\"Undated\"}]}"), "movie", 20);
+        List<Discover.Hit> soon = Discover.upcoming(list, java.time.LocalDate.of(2026, 11, 16), 10);
+        assertEquals(Arrays.asList("Soon", "Later"), Arrays.asList(soon.get(0).name, soon.get(1).name));
+        assertEquals("4 Dec", Discover.shortDate("2026-12-04"));
+        assertEquals("", Discover.shortDate("2026"));
+        assertEquals("14 March 1990", Discover.longDate("1990-03-14"));
+    }
+
+    @Test public void browseAsksForTheGenreLanguageSortAndApps() {
+        java.time.LocalDate today = java.time.LocalDate.of(2026, 11, 16);
+        String u = Discover.browseUrl("movie", 53, "hi", Discover.SORT_TOP, new java.util.LinkedHashSet<>(Arrays.asList(8)), 2, today);
+        assertTrue(u.contains("with_genres=53"));
+        assertTrue(u.contains("with_original_language=hi"));
+        assertTrue(u.contains("sort_by=vote_average.desc&vote_count.gte=300"));
+        assertTrue(u.contains("with_watch_providers=8"));
+        assertTrue(u.contains("page=2"));
+        String all = Discover.browseUrl("tv", 0, null, Discover.SORT_NEW, null, 1, today);
+        assertTrue(all.contains("sort_by=first_air_date.desc&first_air_date.lte=2026-11-16"));
+        assertTrue(!all.contains("with_watch_providers"));
+        assertEquals(9648, Discover.GENRES.get(3).idFor("tv"));
+        assertEquals(0, Discover.GENRES.get(6).idFor("tv"));   // no Romance for series
+    }
+
+    @Test public void aPersonPageListsKnownForByVotesAndAllByDate() throws Exception {
+        Discover.PersonPage p = Discover.parsePerson(new JSONObject("{\"name\":\"Meera Iyer\",\"known_for_department\":\"Acting\","
+                + "\"birthday\":\"1990-03-14\",\"place_of_birth\":\"Chennai\",\"combined_credits\":{\"cast\":["
+                + "{\"media_type\":\"movie\",\"id\":1,\"title\":\"Old\",\"release_date\":\"2014-01-01\",\"vote_count\":900},"
+                + "{\"media_type\":\"tv\",\"id\":2,\"name\":\"New\",\"first_air_date\":\"2026-06-12\",\"vote_count\":10},"
+                + "{\"media_type\":\"movie\",\"id\":1,\"title\":\"Old\",\"release_date\":\"2014-01-01\",\"vote_count\":900}]}}"));
+        assertEquals("Born 14 March 1990, Chennai", p.born);
+        assertEquals(2, p.all.size());
+        assertEquals("Old", p.knownFor.get(0).name);
+        assertEquals("New", p.all.get(0).name);
+    }
+
+    @Test public void seasonsAndEpisodesReadAsTheSeriesPageShowsThem() throws Exception {
+        Discover.Details d = Discover.parseDetails(new JSONObject("{\"id\":2,\"name\":\"S\",\"seasons\":["
+                + "{\"season_number\":0,\"episode_count\":3},{\"season_number\":1,\"episode_count\":8},{\"season_number\":2,\"episode_count\":0}],"
+                + "\"credits\":{\"cast\":[{\"id\":7,\"name\":\"Meera Iyer\",\"character\":\"Anjali\"}]},"
+                + "\"recommendations\":{\"results\":[{\"media_type\":\"tv\",\"id\":9,\"name\":\"Ganga Blue\"}]}}"), "tv");
+        assertEquals(1, d.seasonList.size());
+        assertEquals(1, d.seasonList.get(0)[0]);
+        assertEquals("Anjali", d.people.get(0).sub);
+        assertEquals("Ganga Blue", d.more.get(0).name);
+        List<Discover.Episode> eps = Discover.parseSeason(new JSONObject("{\"episodes\":[{\"episode_number\":1,\"name\":\"The First Call\","
+                + "\"runtime\":52,\"air_date\":\"2026-06-12\"},{\"episode_number\":2,\"name\":\"\"}]}"));
+        assertEquals("52m \u00b7 12 Jun 2026", Discover.episodeLine(eps.get(0)));
+        assertEquals("Episode 2", eps.get(1).name);
+    }
 }

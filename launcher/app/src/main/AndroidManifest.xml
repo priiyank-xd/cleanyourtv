@@ -222,10 +222,20 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen" />
         <!-- Fork: Discover, the launcher's own search (Search on Home) and title pages. -->
         <activity
-            android:name=".SearchActivity"
+            android:name=".DiscoverActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:windowSoftInputMode="stateVisible|adjustNothing"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+        <activity
+            android:name=".BrowseActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+        <activity
+            android:name=".PersonActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
         <activity
             android:name=".TitleActivity"

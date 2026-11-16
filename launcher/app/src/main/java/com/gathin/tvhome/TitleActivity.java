@@ -12,13 +12,13 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -26,7 +26,8 @@ import java.util.Set;
  * A title's page in Discover (fork only): its picture across the whole screen, the facts, the story, and Watch,
  * which is focused when the page opens. Watch opens the first of your apps that streams it, offers to get the app
  * when none of yours does, or hands the title to Google TV's search when nothing streams it. "Also on" names the
- * other ways; All options lists every one in a glass sheet. Back closes the sheet, then the page.
+ * other ways; All options lists every one in a glass sheet. Down scrolls to the episodes (a series), the cast and
+ * crew and More like this. Back closes a sheet, then scrolls back up to Watch, then closes the page.
  */
 public class TitleActivity extends Activity {
     private static final String KIND = "kind", ID = "id", NAME = "name", BACKDROP = "backdrop";
@@ -42,12 +43,17 @@ public class TitleActivity extends Activity {
     private int id;
     private FrameLayout root;
     private ImageView picture;
-    private LinearLayout column;
+    private ScrollView scroll;
+    private LinearLayout column, sections;
+    private View watchButton;
     private boolean pictureShown;
     private Discover.Details details;
+    private Discover.Provider primary;
     private Set<String> installed;
-    /** The open sheet (Where to watch, More), and what had focus before it. */
-    private View sheet, beforeSheet;
+    private DiscoverUi.Sheet sheet;
+    /** The episodes row and its season. */
+    private LinearLayout episodes;
+    private int season;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -71,6 +77,22 @@ public class TitleActivity extends Activity {
                 new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, new int[]{0xFF060608, 0x99060608, 0x00060608})}));
         root.addView(veil, new FrameLayout.LayoutParams(-1, -1));
 
+        scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setClipChildren(false);
+        scroll.setClipToPadding(false);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setClipChildren(false);
+        content.setClipToPadding(false);
+        scroll.addView(content, new ScrollView.LayoutParams(-1, -2));
+        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        scroll.getViewTreeObserver().addOnScrollChangedListener(() ->
+                picture.setAlpha(Math.max(0.12f, 1f - scroll.getScrollY() / (float) ui.px(420))));
+
+        FrameLayout hero = new FrameLayout(this);
+        hero.setClipChildren(false);
+        content.addView(hero, new LinearLayout.LayoutParams(-1, getResources().getDisplayMetrics().heightPixels));
         column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         column.setClipChildren(false);
@@ -78,7 +100,15 @@ public class TitleActivity extends Activity {
         FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(ui.px(640), -2, Gravity.BOTTOM | Gravity.START);
         clp.leftMargin = ui.px(56);
         clp.bottomMargin = ui.px(52);
-        root.addView(column, clp);
+        hero.addView(column, clp);
+
+        sections = new LinearLayout(this);
+        sections.setOrientation(LinearLayout.VERTICAL);
+        sections.setClipChildren(false);
+        sections.setClipToPadding(false);
+        sections.setPadding(ui.px(56), 0, 0, ui.px(56));
+        sections.setBackgroundColor(0xFF060608);
+        content.addView(sections, new LinearLayout.LayoutParams(-1, -2));
         setContentView(root);
 
         showPicture(getIntent().getStringExtra(BACKDROP));
@@ -92,11 +122,26 @@ public class TitleActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
-        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && sheet != null) {
-            if (e.getAction() == KeyEvent.ACTION_UP) closeSheet();
-            return true;
+        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            if (sheet != null) {
+                if (e.getAction() == KeyEvent.ACTION_UP) closeSheet();
+                return true;
+            }
+            View f = getCurrentFocus();
+            if (f != null && watchButton != null && isInside(f, sections)) {
+                if (e.getAction() == KeyEvent.ACTION_UP) {
+                    scroll.smoothScrollTo(0, 0);
+                    watchButton.requestFocus();
+                }
+                return true;
+            }
         }
         return super.dispatchKeyEvent(e);
+    }
+
+    private static boolean isInside(View v, View parent) {
+        for (Object p = v; p instanceof View; p = ((View) p).getParent()) if (p == parent) return true;
+        return false;
     }
 
     @Override
@@ -131,8 +176,7 @@ public class TitleActivity extends Activity {
     private void showFailed() {
         column.removeAllViews();
         column.addView(title(name));
-        TextView t = line(getString(R.string.dc_load_failed), 14, DiscoverUi.INK_SOFT, 14);
-        column.addView(t);
+        column.addView(line(getString(R.string.dc_load_failed), 14, DiscoverUi.INK_SOFT, 14));
         LinearLayout buttons = buttonsRow();
         View google = button(R.drawable.ic_lg_search, null, getString(R.string.dc_google), v -> google());
         buttons.addView(google, buttonLp());
@@ -145,7 +189,7 @@ public class TitleActivity extends Activity {
         if (!d.name.isEmpty()) name = d.name;
         showPicture(d.backdrop);
         installed = installedNow();
-        Discover.Provider primary = Discover.primary(d.where, installed);
+        primary = Discover.primary(d.where, installed);
 
         column.removeAllViews();
         column.addView(title(name));
@@ -163,18 +207,15 @@ public class TitleActivity extends Activity {
         if (!credits.isEmpty()) column.addView(line(credits, 12, DiscoverUi.INK_DIM, 10));
 
         LinearLayout buttons = buttonsRow();
-        View watch;
         if (primary != null) {
             String pkg = Discover.packageFor(primary.id);
-            boolean have = installed.contains(pkg);
-            String label = getString(have ? R.string.dc_watch_on : R.string.dc_get, primary.name);
-            watch = button(0, primary, label, v -> act(primary));
-            buttons.addView(watch, buttonLp());
-            View more = round(R.drawable.ic_dc_more, getString(R.string.dc_more), v -> showMore());
-            buttons.addView(more, roundLp());
+            String label = getString(installed.contains(pkg) ? R.string.dc_watch_on : R.string.dc_get, primary.name);
+            watchButton = button(0, primary, label, v -> watch());
+            buttons.addView(watchButton, buttonLp());
+            buttons.addView(round(R.drawable.ic_dc_more, getString(R.string.dc_more), v -> showMore()), roundLp());
         } else {
-            watch = button(R.drawable.ic_lg_search, null, getString(R.string.dc_google), v -> google());
-            buttons.addView(watch, buttonLp());
+            watchButton = button(R.drawable.ic_lg_search, null, getString(R.string.dc_google), v -> google());
+            buttons.addView(watchButton, buttonLp());
         }
         column.addView(buttons);
 
@@ -196,8 +237,8 @@ public class TitleActivity extends Activity {
             TextView all = ui.text(getString(R.string.dc_all_options) + "  ›", 13, R.string.font_medium, DiscoverUi.INK);
             all.setGravity(Gravity.CENTER);
             all.setPadding(ui.px(14), 0, ui.px(14), 0);
-            ui.focusGlass(all, 16);
-            all.setBackground(null);
+            all.setFocusable(true);
+            all.setClickable(true);
             all.setOnFocusChangeListener((v, has) -> {
                 all.setBackground(has ? ui.focusedGlass(16) : null);
                 all.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(ui.ms(160)).start();
@@ -210,19 +251,126 @@ public class TitleActivity extends Activity {
             rlp.topMargin = ui.px(16);
             column.addView(row, rlp);
         }
-        watch.requestFocus();
+        showSections(d);
+        watchButton.requestFocus();
+    }
+
+    // ---- below the fold ----
+
+    private void showSections(Discover.Details d) {
+        sections.removeAllViews();
+        if (!d.seasonList.isEmpty()) {
+            LinearLayout head = new LinearLayout(this);
+            head.setGravity(Gravity.CENTER_VERTICAL);
+            head.setClipChildren(false);
+            head.addView(ui.shelfTitle(getString(R.string.dc_episodes)));
+            if (d.seasonList.size() > 1) {
+                for (int i = 0; i < d.seasonList.size(); i++) {
+                    int number = d.seasonList.get(i)[0];
+                    TextView s = ui.capsule(d.seasonNames.get(i));
+                    s.setOnClickListener(v -> loadSeason(number));
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(36));
+                    lp.leftMargin = ui.px(i == 0 ? 18 : 10);
+                    head.addView(s, lp);
+                }
+            }
+            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(-2, -2);
+            hlp.topMargin = ui.px(20);
+            sections.addView(head, hlp);
+            episodes = row();
+            loadSeason(d.seasonList.get(0)[0]);
+        }
+        if (!d.people.isEmpty()) {
+            heading(getString(R.string.dc_cast));
+            LinearLayout r = row();
+            for (Discover.Hit p : d.people) {
+                LinearLayout item = new LinearLayout(this);
+                item.setOrientation(LinearLayout.VERTICAL);
+                item.setGravity(Gravity.CENTER_HORIZONTAL);
+                item.setClipChildren(false);
+                FrameLayout photo = ui.avatar(p.poster, p.name, 84);
+                item.addView(photo, new LinearLayout.LayoutParams(ui.px(84), ui.px(84)));
+                TextView n = ui.text(p.name, 12, R.string.font_medium, DiscoverUi.INK);
+                n.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ui.px(110), -2);
+                nlp.topMargin = ui.px(10);
+                item.addView(n, nlp);
+                TextView role = ui.text(p.sub, 11, R.string.font_regular, DiscoverUi.INK_DIM);
+                role.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ui.px(110), -2);
+                rlp.topMargin = ui.px(3);
+                item.addView(role, rlp);
+                ui.focusRound(item, photo);
+                item.setOnClickListener(v -> startActivity(PersonActivity.intent(this, p.id, p.name, p.poster)));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(110), -2);
+                lp.rightMargin = ui.px(14);
+                r.addView(item, lp);
+            }
+        }
+        if (!d.more.isEmpty()) {
+            heading(getString(R.string.dc_more_like));
+            LinearLayout r = row();
+            for (Discover.Hit h : d.more) {
+                LinearLayout card = ui.card(h.picture(), h.name, 200,
+                        v -> startActivity(intent(this, h.kind, h.id, h.name, h.backdrop)));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(200), -2);
+                lp.rightMargin = ui.px(16);
+                r.addView(card, lp);
+            }
+        }
+    }
+
+    private void heading(String label) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.topMargin = ui.px(20);
+        sections.addView(ui.shelfTitle(label), lp);
+    }
+
+    private LinearLayout row() {
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        hs.setClipChildren(false);
+        hs.setClipToPadding(false);
+        LinearLayout r = new LinearLayout(this);
+        r.setClipChildren(false);
+        r.setClipToPadding(false);
+        r.setPadding(0, ui.px(14), ui.px(56), ui.px(10));
+        hs.addView(r);
+        sections.addView(hs, new LinearLayout.LayoutParams(-1, -2));
+        return r;
+    }
+
+    private void loadSeason(int number) {
+        season = number;
+        net.answer(Discover.seasonUrl(id, number), 24 * DiscoverNet.HOURS, a -> {
+            if (isDestroyed() || season != number || episodes == null) return;
+            boolean had = episodes.hasFocus();
+            episodes.removeAllViews();
+            if (a == null) return;
+            for (Discover.Episode e : Discover.parseSeason(a.json)) {
+                LinearLayout card = ui.card(e.still, e.number + ". " + e.name, 196, v -> watch());
+                TextView line = ui.text(Discover.episodeLine(e), 12, R.string.font_regular, DiscoverUi.INK_DIM);
+                LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(ui.px(196), -2);
+                llp.topMargin = ui.px(4);
+                card.addView(line, llp);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ui.px(196), -2);
+                lp.rightMargin = ui.px(18);
+                episodes.addView(card, lp);
+            }
+            if (had && episodes.getChildCount() > 0) episodes.getChildAt(0).requestFocus();
+        });
     }
 
     // ---- actions ----
 
-    /** Watch or a sheet row: open your app, offer to get it, or search for the title on Google TV. */
-    private void act(Discover.Provider p) {
-        String pkg = Discover.packageFor(p.id);
-        boolean ok;
-        if (pkg == null) ok = Watch.googleSearch(this, name);
-        else if (installed.contains(pkg)) ok = Watch.openApp(this, pkg);
-        else ok = Watch.getApp(this, pkg);
-        if (!ok) Toast.makeText(this, getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
+    private void watch() {
+        if (primary == null) {
+            google();
+            return;
+        }
+        if (!Watch.watch(this, primary, installed, name)) {
+            Toast.makeText(this, getString(R.string.dc_cant_open, primary.name), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void google() {
@@ -230,41 +378,34 @@ public class TitleActivity extends Activity {
     }
 
     private Set<String> installedNow() {
-        List<String> pkgs = new ArrayList<>();
-        if (details != null) {
-            for (List<Discover.Provider> g : groups(details.where)) for (Discover.Provider p : g) pkgs.add(Discover.packageFor(p.id));
-        }
-        return Watch.installed(this, pkgs);
-    }
-
-    private static List<List<Discover.Provider>> groups(Discover.Availability a) {
-        List<List<Discover.Provider>> out = new ArrayList<>();
-        out.add(a.stream);
-        out.add(a.rent);
-        out.add(a.buy);
-        out.add(a.free);
-        return out;
+        return Watch.installed(this, details == null ? new java.util.ArrayList<>() : Watch.packages(details.where));
     }
 
     // ---- sheets ----
 
+    private void closeSheet() {
+        if (sheet != null) sheet.close();
+        sheet = null;
+    }
+
     /** Every way to watch in India, grouped; each row opens the app, gets it, or searches Google TV. */
     private void showWhere() {
-        LinearLayout list = openSheet(getString(R.string.dc_where), getString(R.string.dc_where_sub));
+        sheet = ui.new Sheet(root, scroll, getString(R.string.dc_where), getString(R.string.dc_where_sub));
         int[] labels = {R.string.dc_stream, R.string.dc_rent, R.string.dc_buy, R.string.dc_free};
-        List<List<Discover.Provider>> groups = groups(details.where);
+        List<List<Discover.Provider>> groups = java.util.Arrays.asList(details.where.stream, details.where.rent,
+                details.where.buy, details.where.free);
         View first = null;
         for (int g = 0; g < groups.size(); g++) {
             if (groups.get(g).isEmpty()) continue;
-            TextView head = ui.text(getString(labels[g]).toUpperCase(java.util.Locale.ROOT), 12, R.string.font_medium, 0x80FFFFFF);
-            head.setLetterSpacing(0.12f);
-            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(-1, -2);
-            hlp.setMargins(ui.px(16), ui.px(12), 0, ui.px(6));
-            list.addView(head, hlp);
+            sheet.group(getString(labels[g]));
             for (Discover.Provider p : groups.get(g)) {
                 String pkg = Discover.packageFor(p.id);
                 String value = getString(pkg == null ? R.string.dc_search_it : installed.contains(pkg) ? R.string.dc_open : R.string.dc_get_app);
-                View row = sheetRow(ui.providerLogo(p, 46, 26), p.name, value, v -> act(p));
+                View row = sheet.row(ui.providerLogo(p, 46, 26), p.name, value, v -> {
+                    if (!Watch.watch(this, p, installed, name)) {
+                        Toast.makeText(this, getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
+                    }
+                });
                 if (first == null) first = row;
             }
         }
@@ -273,93 +414,21 @@ public class TitleActivity extends Activity {
 
     /** More: the other things to do with the title. */
     private void showMore() {
-        openSheet(getString(R.string.dc_more), null);
+        sheet = ui.new Sheet(root, scroll, getString(R.string.dc_more), null);
         ImageView icon = new ImageView(this);
         icon.setImageResource(R.drawable.ic_lg_search);
-        View row = sheetRow(icon, getString(R.string.dc_google), null, v -> google());
-        row.requestFocus();
-    }
-
-    private LinearLayout sheetList;
-
-    private LinearLayout openSheet(String title, String sub) {
-        closeSheet();
-        beforeSheet = getCurrentFocus();
-        FrameLayout overlay = new FrameLayout(this);
-        overlay.setBackgroundColor(0x59000000);
-        overlay.setClickable(true);
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackground(ui.sheet(28));
-        panel.setPadding(ui.px(18), ui.px(24), ui.px(18), ui.px(18));
-        panel.setClipChildren(false);
-        TextView t = ui.text(title, 22, R.string.font_medium, DiscoverUi.INK);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-1, -2);
-        tlp.leftMargin = ui.px(16);
-        panel.addView(t, tlp);
-        if (sub != null) {
-            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
-            slp.setMargins(ui.px(16), ui.px(6), 0, ui.px(6));
-            panel.addView(ui.text(sub, 12, R.string.font_regular, DiscoverUi.INK_DIM), slp);
-        }
-        ScrollView scroll = new ScrollView(this);
-        scroll.setVerticalScrollBarEnabled(false);
-        scroll.setClipToPadding(false);
-        sheetList = new LinearLayout(this);
-        sheetList.setOrientation(LinearLayout.VERTICAL);
-        sheetList.setPadding(0, ui.px(6), 0, ui.px(6));
-        sheetList.setClipChildren(false);
-        scroll.addView(sheetList, new ScrollView.LayoutParams(-1, -2));
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
-        sp.topMargin = ui.px(8);
-        panel.addView(scroll, sp);
-        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(ui.px(388), -2, Gravity.END | Gravity.TOP);
-        plp.setMargins(0, ui.px(24), ui.px(24), ui.px(24));
-        overlay.addView(panel, plp);
-        root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        sheet = overlay;
-        column.setDescendantFocusability(LinearLayout.FOCUS_BLOCK_DESCENDANTS);
-        return sheetList;
-    }
-
-    private View sheetRow(View logo, String title, String value, View.OnClickListener click) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(ui.px(16), 0, ui.px(16), 0);
-        row.setFocusable(true);
-        row.setClickable(true);
-        row.addView(logo, new LinearLayout.LayoutParams(ui.px(46), ui.px(26)));
-        TextView t = ui.text(title, 15, R.string.font_regular, DiscoverUi.INK);
-        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0, -2, 1);
-        tlp.leftMargin = ui.px(12);
-        row.addView(t, tlp);
-        TextView v = value == null ? null : ui.text(value, 14, R.string.font_regular, DiscoverUi.INK_DIM);
-        if (v != null) row.addView(v);
-        row.setOnFocusChangeListener((x, has) -> {
-            row.setBackground(has ? ui.focusedGlass(16) : null);
-            row.animate().scaleX(has ? 1.03f : 1f).scaleY(has ? 1.03f : 1f).setDuration(ui.ms(160)).start();
-            if (v != null) v.setTextColor(has ? DiscoverUi.INK : DiscoverUi.INK_DIM);
-        });
-        row.setOnClickListener(click);
-        sheetList.addView(row, new LinearLayout.LayoutParams(-1, ui.px(52)));
-        return row;
-    }
-
-    private void closeSheet() {
-        if (sheet == null) return;
-        root.removeView(sheet);
-        sheet = null;
-        column.setDescendantFocusability(LinearLayout.FOCUS_AFTER_DESCENDANTS);
-        if (beforeSheet != null) beforeSheet.requestFocus();
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        sheet.row(icon, getString(R.string.dc_google), null, v -> google()).requestFocus();
     }
 
     // ---- pieces ----
 
     private TextView title(String s) {
-        TextView t = ui.text(s, s.length() > 28 ? 38 : 46, R.string.font_medium, DiscoverUi.INK);
+        TextView t = ui.text(s, 46, R.string.font_medium, DiscoverUi.INK);
         t.setSingleLine(false);
         t.setMaxLines(2);
         t.setLetterSpacing(-0.01f);
+        ui.sizeTitle(t, s);
         return t;
     }
 

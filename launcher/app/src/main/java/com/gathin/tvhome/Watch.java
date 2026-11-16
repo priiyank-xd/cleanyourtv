@@ -40,6 +40,25 @@ final class Watch {
                 || start(ctx, new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)));
     }
 
+    /**
+     * Watch with a provider: open its app when installed, offer it in the Play Store when not, and search Google TV
+     * for the title when no app is known for the service. False when nothing could be opened.
+     */
+    static boolean watch(Context ctx, Discover.Provider p, Set<String> installed, String title) {
+        String pkg = Discover.packageFor(p.id);
+        if (pkg == null) return googleSearch(ctx, title);
+        return installed.contains(pkg) ? openApp(ctx, pkg) : getApp(ctx, pkg);
+    }
+
+    /** Every package a title's providers could open, installed or not. */
+    static java.util.List<String> packages(Discover.Availability a) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (java.util.List<Discover.Provider> g : java.util.Arrays.asList(a.stream, a.rent, a.buy, a.free)) {
+            for (Discover.Provider p : g) out.add(Discover.packageFor(p.id));
+        }
+        return out;
+    }
+
     /** Google TV search (Gemini on newer firmware), for a title when one is given. */
     static boolean googleSearch(Context ctx, String query) {
         Intent i = new Intent(SearchManager.INTENT_ACTION_GLOBAL_SEARCH);

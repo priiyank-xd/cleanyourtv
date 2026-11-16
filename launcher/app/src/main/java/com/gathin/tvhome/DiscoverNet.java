@@ -8,11 +8,13 @@ import android.os.Looper;
 import android.util.Log;
 import android.util.LruCache;
 
+import org.json.JSONObject;
+
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.io.FileOutputStream;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,12 +30,28 @@ final class DiscoverNet {
         void on(T value);
     }
 
+    /** A TMDB answer, and whether it is the copy saved earlier because the network failed. */
+    static final class Answer {
+        final JSONObject json;
+        final boolean offline;
+        final long savedAt;
+
+        Answer(JSONObject json, boolean offline, long savedAt) {
+            this.json = json;
+            this.offline = offline;
+            this.savedAt = savedAt;
+        }
+    }
+
+    static final long HOURS = 60 * 60 * 1000L;
+    private static final int MAX_SAVED = 300;
+
     private static final String TAG = "DiscoverNet";
     private static final long DISK_BYTES = 40L * 1024 * 1024;
     private static DiscoverNet instance;
 
     private final String token;
-    private final File dir;
+    private final File dir, answers;
     private final ExecutorService calls = Executors.newFixedThreadPool(2);
     private final ExecutorService pictures = Executors.newFixedThreadPool(3);
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -53,6 +71,7 @@ final class DiscoverNet {
     private DiscoverNet(Context app) {
         token = BuildConfig.TMDB_TOKEN == null ? "" : BuildConfig.TMDB_TOKEN.trim();
         dir = new File(app.getCacheDir(), "discover");
+        answers = new File(app.getFilesDir(), "discover_answers");
         int max = (int) Math.min(Runtime.getRuntime().maxMemory() / 8, 48L * 1024 * 1024);
         memory = new LruCache<String, Bitmap>(max) {
             @Override protected int sizeOf(String key, Bitmap b) {
@@ -65,15 +84,16 @@ final class DiscoverNet {
         return !token.isEmpty();
     }
 
-    void search(String query, Done<List<Discover.Hit>> done) {
+    /** A search answer (titles and people), null when the call failed. */
+    void search(String query, Done<JSONObject> done) {
         calls.execute(() -> {
-            List<Discover.Hit> hits = null;
+            JSONObject a = null;
             try {
-                hits = Discover.parseSearch(Tmdb.get(Discover.searchUrl(query), token), Discover.MAX_RESULTS);
+                a = Tmdb.get(Discover.searchUrl(query), token);
             } catch (Exception e) {
                 Log.w(TAG, "search failed: " + e.getMessage());
             }
-            List<Discover.Hit> result = hits;
+            JSONObject result = a;
             main.post(() -> done.on(result));
         });
     }
@@ -102,6 +122,72 @@ final class DiscoverNet {
             Discover.Details result = d;
             main.post(() -> done.on(result));
         });
+    }
+
+    /**
+     * A TMDB answer, kept on the projector: the saved copy while it is younger than {@code freshMs}, else a new one
+     * from TMDB, else (no network) the saved copy marked offline. Null when there is neither.
+     */
+    void answer(String url, long freshMs, Done<Answer> done) {
+        calls.execute(() -> {
+            File f = new File(answers, sha1(url) + ".json");
+            JSONObject saved = null;
+            long at = 0;
+            try {
+                if (f.isFile()) {
+                    JSONObject w = new JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8));
+                    saved = w.optJSONObject("body");
+                    at = w.optLong("at");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "saved answer unreadable: " + e.getMessage());
+            }
+            Answer result = null;
+            if (saved != null && System.currentTimeMillis() - at < freshMs) {
+                result = new Answer(saved, false, at);
+            } else {
+                try {
+                    JSONObject fresh = Tmdb.get(url, token);
+                    long now = System.currentTimeMillis();
+                    saveAnswer(f, new JSONObject().put("at", now).put("body", fresh));
+                    result = new Answer(fresh, false, now);
+                } catch (Exception e) {
+                    Log.w(TAG, "answer failed: " + e.getMessage());
+                    if (saved != null) result = new Answer(saved, true, at);
+                }
+            }
+            Answer r = result;
+            main.post(() -> done.on(r));
+        });
+    }
+
+    private void saveAnswer(File f, JSONObject w) {
+        try {
+            if (!answers.isDirectory() && !answers.mkdirs()) return;
+            File tmp = new File(f.getPath() + ".part");
+            try (FileOutputStream out = new FileOutputStream(tmp)) {
+                out.write(w.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            if (!tmp.renameTo(f)) return;
+            File[] all = answers.listFiles();
+            if (all != null && all.length > MAX_SAVED) {
+                Arrays.sort(all, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+                for (int i = 0; i < all.length - MAX_SAVED; i++) if (!all[i].delete()) break;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "could not save an answer: " + e.getMessage());
+        }
+    }
+
+    private static String sha1(String s) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-1").digest(s.getBytes(StandardCharsets.UTF_8));
+            StringBuilder b = new StringBuilder();
+            for (byte x : d) b.append(String.format(java.util.Locale.ROOT, "%02x", x));
+            return b.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(s.hashCode());
+        }
     }
 
     /** A TMDB picture ({@code size} as w300, w780, w1280...), decoded no wider than about {@code width} pixels. */
