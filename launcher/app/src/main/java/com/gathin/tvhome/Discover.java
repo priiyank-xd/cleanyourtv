@@ -702,6 +702,129 @@ final class Discover {
         return out;
     }
 
+    // ---- your TMDB account: sign-in, Watch later, Favourites, lists ----
+
+    static final String V4 = "https://api.themoviedb.org/4/";
+    static final String WATCHLIST = "watchlist", FAVORITE = "favorite";
+
+    static String requestTokenUrl() {
+        return V4 + "auth/request_token";
+    }
+
+    static String accessTokenUrl() {
+        return V4 + "auth/access_token";
+    }
+
+    /** Where the phone approves the sign-in; shown on the TV as a QR code. */
+    static String approveUrl(String requestToken) {
+        return "https://www.themoviedb.org/auth/access?request_token=" + enc(requestToken);
+    }
+
+    static String convertUrl() {
+        return Tmdb.API + "authentication/session/convert/4";
+    }
+
+    static String accountUrl(String session) {
+        return Tmdb.API + "account?session_id=" + enc(session);
+    }
+
+    /** Whether a title is on your watchlist and in your favourites (v3, with the session). */
+    static String statesUrl(String kind, int id, String session) {
+        return Tmdb.API + ("movie".equals(kind) ? "movie/" : "tv/") + id + "/account_states?session_id=" + enc(session);
+    }
+
+    /** Adds to or takes off the watchlist or favourites: {@code what} is WATCHLIST or FAVORITE. */
+    static String markUrl(String what, int accountId, String session) {
+        return Tmdb.API + "account/" + accountId + "/" + what + "?session_id=" + enc(session);
+    }
+
+    static String markBody(String what, String kind, int id, boolean on) {
+        try {
+            return new JSONObject().put("media_type", "movie".equals(kind) ? "movie" : "tv").put("media_id", id).put(what, on).toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    /** Your watchlist or favourites of one kind, newest first (v4, with your access token). */
+    static String savedUrl(String objectId, String what, String kind, int page) {
+        return V4 + "account/" + objectId + "/" + ("movie".equals(kind) ? "movie/" : "tv/")
+                + (WATCHLIST.equals(what) ? "watchlist" : "favorites") + "?page=" + page + "&sort_by=created_at.desc&language=" + Tmdb.LANGUAGE;
+    }
+
+    static String listsUrl(String objectId, int page) {
+        return V4 + "account/" + objectId + "/lists?page=" + page;
+    }
+
+    static String listUrl(int listId, int page) {
+        return V4 + "list/" + listId + "?page=" + page + "&language=" + Tmdb.LANGUAGE;
+    }
+
+    static String newListUrl() {
+        return V4 + "list";
+    }
+
+    static String newListBody(String name) {
+        try {
+            return new JSONObject().put("name", name.trim()).put("iso_639_1", "en").put("public", false).toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    static String itemsUrl(int listId) {
+        return V4 + "list/" + listId + "/items";
+    }
+
+    static String itemsBody(String kind, int id) {
+        try {
+            return new JSONObject().put("items", new JSONArray().put(new JSONObject()
+                    .put("media_type", "movie".equals(kind) ? "movie" : "tv").put("media_id", id))).toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    /** One of your own lists. */
+    static final class UserList {
+        final int id, count;
+        final String name;
+
+        UserList(int id, String name, int count) {
+            this.id = id;
+            this.name = name;
+            this.count = count;
+        }
+    }
+
+    static List<UserList> parseLists(JSONObject answer) {
+        List<UserList> out = new ArrayList<>();
+        JSONArray results = answer == null ? null : answer.optJSONArray("results");
+        if (results == null) return out;
+        for (int i = 0; i < results.length(); i++) {
+            JSONObject l = results.optJSONObject(i);
+            if (l == null || l.optInt("id") == 0) continue;
+            String name = l.optString("name", "").trim();
+            out.add(new UserList(l.optInt("id"), name.isEmpty() ? "List" : name, l.optInt("number_of_items")));
+        }
+        return out;
+    }
+
+    /** {watchlist, favourite} from an account_states answer. */
+    static boolean[] parseStates(JSONObject answer) {
+        return new boolean[]{answer != null && answer.optBoolean("watchlist"), answer != null && answer.optBoolean("favorite")};
+    }
+
+    /** Movies and series of your watchlist (or favourites) together: newest first within each, taken in turn. */
+    static List<Hit> interleave(List<Hit> a, List<Hit> b, int max) {
+        List<Hit> out = new ArrayList<>();
+        for (int i = 0; out.size() < max && (i < a.size() || i < b.size()); i++) {
+            if (i < a.size()) out.add(a.get(i));
+            if (i < b.size() && out.size() < max) out.add(b.get(i));
+        }
+        return out;
+    }
+
     // ---- words on screen ----
 
     /** "Movie · 2025 · Science Fiction, Adventure · 2h 18m · U/A 13+": what's known, at most two genres. */

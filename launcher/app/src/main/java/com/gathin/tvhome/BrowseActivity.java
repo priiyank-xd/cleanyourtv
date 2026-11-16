@@ -119,8 +119,8 @@ public class BrowseActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
-        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && sheet != null) {
-            if (e.getAction() == KeyEvent.ACTION_UP) closeSheet();
+        if (e.getKeyCode() == KeyEvent.KEYCODE_BACK && ui.open != null) {
+            if (e.getAction() == KeyEvent.ACTION_UP && ui.open != null) ui.open.close();
             return true;
         }
         return super.dispatchKeyEvent(e);

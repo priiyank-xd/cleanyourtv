@@ -16,7 +16,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * Discover (fork only), opened by Search on Home: a glass tab bar (Search, Discover) over the tab's page. Search
+ * Discover (fork only), opened by Search on Home: a glass tab bar (Search, Discover, My lists) over the tab's page. Search
  * on Home lands on the Search tab with the TV's keyboard up. Moving along the tab bar shows each tab; Down enters it.
  * Back works one level at a time: from inside a tab to the tab bar, from the tab bar to Home.
  */
@@ -47,8 +47,8 @@ public class DiscoverActivity extends Activity {
     private TmdbFeed feed;
     private FrameLayout root, pages;
     private LinearLayout bar;
-    private final View[] tabs = new View[2];
-    private final Pane[] panes = new Pane[2];
+    private final View[] tabs = new View[3];
+    private final Pane[] panes = new Pane[3];
     private int current = -1;
 
     @Override
@@ -71,6 +71,7 @@ public class DiscoverActivity extends Activity {
 
         panes[0] = new SearchPane(this, ui, feed);
         panes[1] = new HomePane(this, ui, feed);
+        panes[2] = new ListsPane(this, ui);
         for (Pane p : panes) {
             p.view().setVisibility(View.GONE);
             pages.addView(p.view(), new FrameLayout.LayoutParams(-1, -1));
@@ -93,6 +94,10 @@ public class DiscoverActivity extends Activity {
         discover.setGravity(Gravity.CENTER);
         discover.setPadding(ui.px(18), 0, ui.px(18), 0);
         tabs[1] = discover;
+        TextView lists = ui.text(getString(R.string.dc_my_lists), 14, R.string.font_medium, DiscoverUi.INK);
+        lists.setGravity(Gravity.CENTER);
+        lists.setPadding(ui.px(18), 0, ui.px(18), 0);
+        tabs[2] = lists;
         for (int i = 0; i < tabs.length; i++) {
             int index = i;
             View t = tabs[i];
@@ -158,9 +163,29 @@ public class DiscoverActivity extends Activity {
         return root;
     }
 
+    /** The pages under the tab bar, which a sheet keeps focus out of while it is open. */
+    FrameLayout pages() {
+        return pages;
+    }
+
+    DiscoverUi ui() {
+        return ui;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // back from a title page or Connect TMDB: lists and Watch later may have changed
+        if (current == 2) panes[2].shown();
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
+            if (ui.open != null) {
+                if (e.getAction() == KeyEvent.ACTION_UP && ui.open != null) ui.open.close();
+                return true;
+            }
             if (e.getAction() == KeyEvent.ACTION_UP) {
                 View f = getCurrentFocus();
                 boolean onBar = f != null && f.getParent() == bar;

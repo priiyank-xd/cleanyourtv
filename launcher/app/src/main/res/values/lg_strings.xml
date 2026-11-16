@@ -143,4 +143,29 @@
     <string name="dc_imdb" translatable="false">IMDb</string>
     <string name="dc_rotten_tomatoes" translatable="false">Rotten Tomatoes</string>
     <string name="dc_trailer" translatable="false">Trailer</string>
+    <string name="dc_my_lists" translatable="false">My lists</string>
+    <string name="dc_save" translatable="false">Save</string>
+    <string name="dc_save_to" translatable="false">Save to</string>
+    <string name="dc_watch_later" translatable="false">Watch later</string>
+    <string name="dc_favourites" translatable="false">Favourites</string>
+    <string name="dc_new_list" translatable="false">New list</string>
+    <string name="dc_list_name" translatable="false">List name</string>
+    <string name="dc_save_failed" translatable="false">Couldn\'t save that. Check the internet connection.</string>
+    <string name="dc_connect_to_save" translatable="false">Connect TMDB to save titles</string>
+    <string name="dc_connect_title" translatable="false">Connect TMDB</string>
+    <string name="dc_connect_steps" translatable="false">Scan with your phone, sign in to TMDB and approve. This screen carries on by itself. Watch later and your lists are kept in your TMDB account.</string>
+    <string name="dc_connecting" translatable="false">Connecting\u2026</string>
+    <string name="dc_connect_failed" translatable="false">Couldn\'t finish connecting. Try again.</string>
+    <string name="dc_code_expired" translatable="false">The code expired.</string>
+    <string name="dc_new_code" translatable="false">New code</string>
+    <string name="dc_connected_as" translatable="false">Connected as %1$s</string>
+    <string name="dc_connected_plain" translatable="false">Connected to TMDB</string>
+    <string name="dc_connected_note" translatable="false">Watch later, Favourites and your lists come from this account. Disconnect makes the projector forget it.</string>
+    <string name="dc_done" translatable="false">Done</string>
+    <string name="dc_disconnect" translatable="false">Disconnect</string>
+    <string name="dc_lists_signed_out" translatable="false">Connect your TMDB account to keep Watch later, Favourites and your own lists here. They show up on themoviedb.org too.</string>
+    <string name="dc_list_empty" translatable="false">Nothing here yet. Use + on a title to add it.</string>
+    <string name="dc_because" translatable="false">Because you saved %1$s</string>
+    <string name="hub_tmdb" translatable="false">TMDB account</string>
+    <string name="hub_tmdb_off" translatable="false">Not connected \u00b7 for Watch later and lists</string>
 </resources>

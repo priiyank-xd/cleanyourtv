@@ -218,6 +218,94 @@ final class DiscoverNet {
                 a -> done.on(a == null ? new java.util.HashMap<>() : Discover.parseJustWatch(a.json, kind, tmdbId)));
     }
 
+    // ---- your TMDB account ----
+
+    /**
+     * A call to TMDB as you (sign-in, lists, marking): {@code method} GET, POST or DELETE, an optional JSON body,
+     * and the bearer to send (your v4 access token, or the launcher's for v3 calls with a session). Answers null
+     * when the call fails. Nothing here is saved: your lists change.
+     */
+    void call(String method, String url, String body, String bearer, Done<JSONObject> done) {
+        calls.execute(() -> {
+            JSONObject result = null;
+            try {
+                result = send(method, url, body, bearer);
+            } catch (Exception e) {
+                Log.w(TAG, "account call failed: " + e.getMessage());
+            }
+            JSONObject r = result;
+            main.post(() -> done.on(r));
+        });
+    }
+
+    String appToken() {
+        return token;
+    }
+
+    private static JSONObject send(String method, String url, String body, String bearer) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        c.setConnectTimeout(10_000);
+        c.setReadTimeout(15_000);
+        c.setRequestMethod(method);
+        c.setRequestProperty("Accept", "application/json");
+        if (bearer != null && !bearer.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + bearer);
+        try {
+            if (body != null) {
+                c.setDoOutput(true);
+                c.setRequestProperty("Content-Type", "application/json;charset=utf-8");
+                try (java.io.OutputStream out = c.getOutputStream()) {
+                    out.write(body.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            int code = c.getResponseCode();
+            if (code < 200 || code >= 300) throw new java.io.IOException("TMDB " + code);
+            try (java.io.InputStream in = c.getInputStream(); java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+                byte[] b = new byte[16 * 1024];
+                int n;
+                while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+                String text = new String(buf.toByteArray(), StandardCharsets.UTF_8).trim();
+                return text.isEmpty() ? new JSONObject() : new JSONObject(text);
+            }
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    /** Your watchlist or favourites (WATCHLIST or FAVORITE), movies and series together, newest first. */
+    void saved(TmdbAccount a, String what, Done<java.util.List<Discover.Hit>> done) {
+        call("GET", Discover.savedUrl(a.objectId, what, "movie", 1), null, a.access, movies ->
+                call("GET", Discover.savedUrl(a.objectId, what, "tv", 1), null, a.access, series -> {
+                    if (movies == null && series == null) {
+                        done.on(null);
+                        return;
+                    }
+                    done.on(Discover.interleave(Discover.parseList(movies, "movie", 20), Discover.parseList(series, "tv", 20), 40));
+                }));
+    }
+
+    /** Your own lists, null when they couldn't be read. */
+    void lists(TmdbAccount a, Done<java.util.List<Discover.UserList>> done) {
+        call("GET", Discover.listsUrl(a.objectId, 1), null, a.access, j -> done.on(j == null ? null : Discover.parseLists(j)));
+    }
+
+    /** A list's titles (its first 60), null when it couldn't be read. */
+    void listItems(TmdbAccount a, int listId, Done<java.util.List<Discover.Hit>> done) {
+        java.util.List<Discover.Hit> all = new java.util.ArrayList<>();
+        listPage(a, listId, 1, all, done);
+    }
+
+    private void listPage(TmdbAccount a, int listId, int page, java.util.List<Discover.Hit> all, Done<java.util.List<Discover.Hit>> done) {
+        call("GET", Discover.listUrl(listId, page), null, a.access, j -> {
+            if (j == null) {
+                done.on(page == 1 ? null : all);
+                return;
+            }
+            all.addAll(Discover.parseList(j, null, 20));
+            if (page < 3 && page < j.optInt("total_pages", 1)) listPage(a, listId, page + 1, all, done);
+            else done.on(all);
+        });
+    }
+
     private void saveAnswer(File f, JSONObject w) {
         try {
             if (!answers.isDirectory() && !answers.mkdirs()) return;

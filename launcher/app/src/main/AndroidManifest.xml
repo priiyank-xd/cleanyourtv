@@ -228,6 +228,11 @@
             android:windowSoftInputMode="stateVisible|adjustNothing"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
         <activity
+            android:name=".ConnectActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar.Fullscreen" />
+        <activity
             android:name=".BrowseActivity"
             android:exported="false"
             android:excludeFromRecents="true"

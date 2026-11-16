@@ -60,6 +60,8 @@ android {
 dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
     implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
+    // Fork: draws the QR code Discover's TMDB sign-in shows (ConnectActivity). R8 keeps only the QR encoder.
+    implementation 'com.google.zxing:core:3.5.3'
     // Test only (never in the APK): plain JVM tests for the module card validators, src/test.
     testImplementation 'junit:junit:4.13.2'
     // Test only: android.jar's org.json is a stub on the JVM; the TMDB parser tests need the real one.

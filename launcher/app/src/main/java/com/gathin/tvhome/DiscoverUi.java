@@ -30,6 +30,8 @@ final class DiscoverUi {
     final Activity act;
     final Config cfg;
     final float u;
+    /** The sheet open over the page, if any: Back closes it first. */
+    Sheet open;
 
     DiscoverUi(Activity act) {
         this.act = act;
@@ -157,6 +159,8 @@ final class DiscoverUi {
             overlay.addView(panel, plp);
             root.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
             behind.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+            if (open != null) open.close();
+            open = this;
         }
 
         /** A row: an optional logo or icon, a title, an optional value on the right. */
@@ -193,9 +197,21 @@ final class DiscoverUi {
         }
 
         void close() {
+            if (overlay.getParent() == null) return;
             root.removeView(overlay);
             behind.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+            if (open == this) open = null;
             if (before != null) before.requestFocus();
+        }
+
+        /** Empties the sheet's rows, for a new step in the same sheet. */
+        void clear() {
+            list.removeAllViews();
+        }
+
+        /** Adds any view as a row. */
+        void add(View v, int height) {
+            list.addView(v, new LinearLayout.LayoutParams(-1, height));
         }
     }
 
@@ -396,6 +412,34 @@ final class DiscoverUi {
             row.addView(value, lp);
         }
         row.setVisibility(View.VISIBLE);
+    }
+
+    /** A round tick for a sheet row, in a logo-sized box: blue with a check when on, an empty ring when off. */
+    FrameLayout tick(boolean on) {
+        FrameLayout box = new FrameLayout(act);
+        View circle = new View(act);
+        circle.setTag("circle");
+        box.addView(circle, new FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER));
+        ImageView check = new ImageView(act);
+        check.setTag("check");
+        check.setImageResource(R.drawable.ic_lg_check);
+        box.addView(check, new FrameLayout.LayoutParams(px(14), px(14), Gravity.CENTER));
+        setTick(box, on);
+        return box;
+    }
+
+    void setTick(FrameLayout box, boolean on) {
+        GradientDrawable c = new GradientDrawable();
+        c.setShape(GradientDrawable.OVAL);
+        if (on) c.setColor(0xFF0A84FF);
+        else c.setStroke(Math.max(1, px(1.5f)), 0x80FFFFFF);
+        box.findViewWithTag("circle").setBackground(c);
+        box.findViewWithTag("check").setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+        box.setTag(on);
+    }
+
+    static boolean isTicked(FrameLayout box) {
+        return Boolean.TRUE.equals(box.getTag());
     }
 
     /** A shelf's title. */

@@ -49,7 +49,7 @@ final class HomePane implements DiscoverActivity.Pane {
     private TextView kicker, title, facts, story;
     private LinearLayout scores;
     private LinearLayout watch, dots;
-    private View details;
+    private View details, saveButton;
     private boolean loading, loaded;
     private Set<String> installed = new LinkedHashSet<>();
     private final List<Discover.Hit> heroes = new ArrayList<>();
@@ -57,7 +57,8 @@ final class HomePane implements DiscoverActivity.Pane {
     private Discover.Details heroDetails;
     private final Runnable rotate = new Runnable() {
         @Override public void run() {
-            boolean busy = watch != null && (watch.hasFocus() || (details != null && details.hasFocus()));
+            boolean busy = watch != null && (watch.hasFocus() || (details != null && details.hasFocus())
+                || (saveButton != null && saveButton.hasFocus()) || act.ui().open != null);
             if (!busy && heroes.size() > 1 && page.getVisibility() == View.VISIBLE) showHero(hero + 1);
             handler.postDelayed(this, HERO_MS);
         }
@@ -161,6 +162,21 @@ final class HomePane implements DiscoverActivity.Pane {
             return false;
         });
         details = more;
+        FrameLayout plus = new FrameLayout(act);
+        ImageView plusIcon = new ImageView(act);
+        plusIcon.setImageResource(R.drawable.ic_dc_plus);
+        plus.addView(plusIcon, new FrameLayout.LayoutParams(ui.px(20), ui.px(20), Gravity.CENTER));
+        plus.setContentDescription(act.getString(R.string.dc_save));
+        ui.focusGlass(plus, 24);
+        plus.setOnClickListener(v -> {
+            if (heroes.isEmpty()) return;
+            Discover.Hit h = heroes.get(hero);
+            SaveSheet.open(act, ui, act.root(), act.pages(), h.kind, h.id, h.name);
+        });
+        saveButton = plus;
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(ui.px(48), ui.px(48));
+        plp.leftMargin = ui.px(14);
+        buttons.addView(plus, plp);
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-2, ui.px(48));
         dlp.leftMargin = ui.px(14);
         buttons.addView(more, dlp);
@@ -278,6 +294,7 @@ final class HomePane implements DiscoverActivity.Pane {
         shelves.removeAllViews();
         kicker.setVisibility(any ? View.VISIBLE : View.GONE);
         details.setVisibility(any ? View.VISIBLE : View.GONE);
+        saveButton.setVisibility(any ? View.VISIBLE : View.GONE);
         dots.setVisibility(any ? View.VISIBLE : View.GONE);
         if (!any) {
             // nothing saved yet: say so once, with Retry where Watch would be
@@ -308,6 +325,7 @@ final class HomePane implements DiscoverActivity.Pane {
             }
         }
         browse();
+        savedShelves();
         if (soon != null && !soon.isEmpty()) {
             LinearLayout row = shelf(act.getString(R.string.dc_coming_soon));
             for (Discover.Hit h : soon) {
@@ -529,6 +547,42 @@ final class HomePane implements DiscoverActivity.Pane {
         clp.topMargin = -ui.px(10);
         clp.bottomMargin = ui.px(20);
         shelves.addView(caption, clp);
+    }
+
+    /**
+     * Signed in to TMDB: Watch later first among the shelves, then "Because you saved …" from TMDB's
+     * recommendations for the title saved last. They arrive after the others and slot in at the top.
+     */
+    private void savedShelves() {
+        TmdbAccount a = TmdbAccount.load(act);
+        if (a == null) return;
+        net.saved(a, Discover.WATCHLIST, list -> {
+            if (list == null || list.isEmpty() || act.isDestroyed()) return;
+            int at = 0;
+            at = shelfAt(at, act.getString(R.string.dc_watch_later), list);
+            Discover.Hit last = list.get(0);
+            int after = at;
+            net.details(last.kind, last.id, d -> {
+                if (d == null || d.more.isEmpty() || act.isDestroyed()) return;
+                shelfAt(after, act.getString(R.string.dc_because, last.name), d.more);
+            });
+        });
+    }
+
+    /** A shelf of cards put in at position {@code index} among the shelves; returns the index after it. */
+    private int shelfAt(int index, String label, List<Discover.Hit> hits) {
+        int before = shelves.getChildCount();
+        LinearLayout row = shelf(label);
+        for (Discover.Hit h : hits) {
+            row.addView(ui.card(h.picture(), h.name, 200, v -> openTitle(h.kind, h.id, h.name, h.backdrop)), cardLp());
+        }
+        // shelf() added a title and a row at the end: move both to index
+        View title = shelves.getChildAt(before), rowView = shelves.getChildAt(before + 1);
+        shelves.removeView(title);
+        shelves.removeView(rowView);
+        shelves.addView(title, index);
+        shelves.addView(rowView, index + 1);
+        return index + 2;
     }
 
     /** Browse: languages first (most watched in India), then genres, as glass capsules. */

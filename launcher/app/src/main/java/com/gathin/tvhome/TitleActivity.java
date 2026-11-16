@@ -125,8 +125,8 @@ public class TitleActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.KEYCODE_BACK) {
-            if (sheet != null) {
-                if (e.getAction() == KeyEvent.ACTION_UP) closeSheet();
+            if (ui.open != null) {
+                if (e.getAction() == KeyEvent.ACTION_UP && ui.open != null) ui.open.close();
                 return true;
             }
             View f = getCurrentFocus();
@@ -232,11 +232,13 @@ public class TitleActivity extends Activity {
             String label = getString(installed.contains(pkg) ? R.string.dc_watch_on : R.string.dc_get, primary.name);
             watchButton = button(0, primary, label, v -> watch());
             buttons.addView(watchButton, buttonLp());
+            buttons.addView(round(R.drawable.ic_dc_plus, getString(R.string.dc_save), v -> save()), roundLp());
             if (!d.trailer.isEmpty()) buttons.addView(round(R.drawable.ic_lg_play, getString(R.string.dc_trailer), v -> trailer()), roundLp());
             buttons.addView(round(R.drawable.ic_dc_more, getString(R.string.dc_more), v -> showMore()), roundLp());
         } else {
             watchButton = button(R.drawable.ic_lg_search, null, getString(R.string.dc_google), v -> google());
             buttons.addView(watchButton, buttonLp());
+            buttons.addView(round(R.drawable.ic_dc_plus, getString(R.string.dc_save), v -> save()), roundLp());
             if (!d.trailer.isEmpty()) buttons.addView(round(R.drawable.ic_lg_play, getString(R.string.dc_trailer), v -> trailer()), roundLp());
         }
         column.addView(buttons);
@@ -393,6 +395,10 @@ public class TitleActivity extends Activity {
         if (!Watch.watch(this, primary, installed, name, links.get(primary.id))) {
             Toast.makeText(this, getString(R.string.dc_cant_open, primary.name), Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void save() {
+        SaveSheet.open(this, ui, root, scroll, kind, id, name);
     }
 
     private void trailer() {

@@ -42,6 +42,8 @@ public class SettingsHubActivity extends Activity {
     private float u;
     private SharedPreferences choices;
     private final List<Row> rows = new ArrayList<>();
+    /** Fork: the TMDB account row, whose second line says who is connected. */
+    private Row account;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -138,6 +140,8 @@ public class SettingsHubActivity extends Activity {
                 new String[]{getString(R.string.hub_search_discover), getString(R.string.hub_button_google)},
                 () -> HubChoices.SEARCH_GOOGLE.equals(Config.lgSearchButton(this)) ? 1 : 0,
                 i -> save(Config.LG_SEARCH_BUTTON_KEY, i == 1 ? HubChoices.SEARCH_GOOGLE : HubChoices.SEARCH_DISCOVER), null);
+        account = actionRow(list, R.drawable.ic_lg_profile, R.string.hub_tmdb, R.string.hub_tmdb_off,
+                v -> open(new Intent(this, ConnectActivity.class)));
 
         setContentView(root);
         refresh();
@@ -147,7 +151,12 @@ public class SettingsHubActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        // A page opened from here (full launcher settings) may have changed a choice.
+        // A page opened from here (full launcher settings, Connect TMDB) may have changed a choice.
+        if (account != null) {
+            TmdbAccount a = TmdbAccount.load(this);
+            account.sub.setText(a == null ? getString(R.string.hub_tmdb_off)
+                    : a.name.isEmpty() ? getString(R.string.dc_connected_plain) : getString(R.string.dc_connected_as, a.name));
+        }
         refresh();
     }
 
@@ -270,7 +279,7 @@ public class SettingsHubActivity extends Activity {
         changed();
     }
 
-    private void actionRow(LinearLayout list, int icon, int title, int sub, View.OnClickListener click) {
+    private Row actionRow(LinearLayout list, int icon, int title, int sub, View.OnClickListener click) {
         Row r = row(list, icon, title);
         r.sub = text(getString(sub), 11.5f, R.string.font_regular, ROW_SUB);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(-1, -2);
@@ -278,6 +287,7 @@ public class SettingsHubActivity extends Activity {
         ((LinearLayout) r.title.getParent()).addView(r.sub, subLp);
         r.view.setOnClickListener(click);
         r.view.setOnKeyListener((v, code, e) -> code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT);
+        return r;
     }
 
     private void settingsRow(LinearLayout list, int icon, int title, int sub, String action) {

@@ -248,4 +248,51 @@ public class DiscoverTest {
         assertTrue(Discover.parseJustWatch(a, "tv", 1).isEmpty());
         assertTrue(Discover.parseJustWatch(null, "tv", 1).isEmpty());
     }
+
+    @Test public void signInUsesTmdbsV4ApprovalPage() {
+        assertEquals("https://www.themoviedb.org/auth/access?request_token=a.b%2Bc", Discover.approveUrl("a.b+c"));
+        assertEquals("https://api.themoviedb.org/4/auth/request_token", Discover.requestTokenUrl());
+        assertTrue(Discover.convertUrl().endsWith("/3/authentication/session/convert/4"));
+    }
+
+    @Test public void markingSendsTheKindIdAndChoice() throws Exception {
+        JSONObject b = new JSONObject(Discover.markBody(Discover.WATCHLIST, "tv", 7, true));
+        assertEquals("tv", b.getString("media_type"));
+        assertEquals(7, b.getInt("media_id"));
+        assertTrue(b.getBoolean("watchlist"));
+        assertTrue(Discover.markUrl(Discover.FAVORITE, 42, "s").endsWith("/3/account/42/favorite?session_id=s"));
+        assertTrue(Discover.savedUrl("o", Discover.FAVORITE, "movie", 1).contains("/4/account/o/movie/favorites?page=1&sort_by=created_at.desc"));
+        assertTrue(Discover.savedUrl("o", Discover.WATCHLIST, "tv", 2).contains("/4/account/o/tv/watchlist?page=2"));
+    }
+
+    @Test public void listsAndTheirItemsRead() throws Exception {
+        List<Discover.UserList> lists = Discover.parseLists(new JSONObject("{\"results\":[{\"id\":5,\"name\":\"Weekend with family\",\"number_of_items\":3},"
+                + "{\"id\":0,\"name\":\"broken\"},{\"id\":6,\"name\":\"  \"}]}"));
+        assertEquals(2, lists.size());
+        assertEquals("Weekend with family", lists.get(0).name);
+        assertEquals("List", lists.get(1).name);
+        JSONObject item = new JSONObject(Discover.itemsBody("movie", 3)).getJSONArray("items").getJSONObject(0);
+        assertEquals("movie", item.getString("media_type"));
+        assertEquals(3, item.getInt("media_id"));
+        assertEquals(false, new JSONObject(Discover.newListBody(" Sci-fi nights ")).getBoolean("public"));
+        boolean[] states = Discover.parseStates(new JSONObject("{\"watchlist\":true,\"favorite\":false}"));
+        assertTrue(states[0]);
+        assertTrue(!states[1]);
+    }
+
+    @Test public void watchLaterTakesMoviesAndSeriesInTurn() throws Exception {
+        List<Discover.Hit> m = Discover.parseList(new JSONObject("{\"results\":[{\"id\":1,\"title\":\"M1\"},{\"id\":2,\"title\":\"M2\"},{\"id\":3,\"title\":\"M3\"}]}"), "movie", 20);
+        List<Discover.Hit> t = Discover.parseList(new JSONObject("{\"results\":[{\"id\":9,\"name\":\"S1\"}]}"), "tv", 20);
+        List<Discover.Hit> both = Discover.interleave(m, t, 10);
+        assertEquals(Arrays.asList("M1", "S1", "M2", "M3"), Arrays.asList(both.get(0).name, both.get(1).name, both.get(2).name, both.get(3).name));
+        assertEquals(2, Discover.interleave(m, t, 2).size());
+    }
+
+    @Test public void aRealLengthSignInLinkFitsAQrCode() throws Exception {
+        StringBuilder token = new StringBuilder();
+        for (int i = 0; i < 284; i++) token.append((char) ('a' + i % 26));
+        com.google.zxing.common.BitMatrix m = new com.google.zxing.qrcode.QRCodeWriter().encode(Discover.approveUrl(token.toString()),
+                com.google.zxing.BarcodeFormat.QR_CODE, 392, 392);
+        assertTrue(m.getWidth() >= 392);
+    }
 }
