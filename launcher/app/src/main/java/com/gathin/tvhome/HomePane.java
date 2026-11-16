@@ -47,6 +47,7 @@ final class HomePane implements DiscoverActivity.Pane {
     private final LinearLayout shelves;
     private final FrameLayout notice;
     private TextView kicker, title, facts, story;
+    private LinearLayout scores;
     private LinearLayout watch, dots;
     private View details;
     private boolean loading, loaded;
@@ -115,6 +116,10 @@ final class HomePane implements DiscoverActivity.Pane {
         LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(-2, -2);
         flp.topMargin = ui.px(12);
         column.addView(facts, flp);
+        scores = ui.ratingsRow();
+        LinearLayout.LayoutParams sclp = new LinearLayout.LayoutParams(-2, ui.px(22));
+        sclp.topMargin = ui.px(10);
+        column.addView(scores, sclp);
         story = ui.text("", 14, R.string.font_regular, 0xDBFFFFFF);
         story.setSingleLine(false);
         story.setMaxLines(2);
@@ -376,6 +381,7 @@ final class HomePane implements DiscoverActivity.Pane {
         String kindWord = act.getString("movie".equals(h.kind) ? R.string.dc_movie : R.string.dc_one_series);
         facts.setText(h.year.isEmpty() ? kindWord : act.getString(R.string.dc_pair, kindWord, h.year));
         story.setText("");
+        ui.fillRatings(scores, null);
         paintWatch(null);
         for (int d = 0; d < dots.getChildCount(); d++) {
             View dot = dots.getChildAt(d);
@@ -398,6 +404,9 @@ final class HomePane implements DiscoverActivity.Pane {
             story.setText(d.overview);
             installed.addAll(Watch.installed(act, Watch.packages(d.where)));
             paintWatch(Discover.primary(d.where, installed));
+            net.ratings(d.imdbId, r -> {
+                if (!act.isDestroyed() && hero < heroes.size() && heroes.get(hero) == h) ui.fillRatings(scores, r);
+            });
         });
     }
 
@@ -439,9 +448,18 @@ final class HomePane implements DiscoverActivity.Pane {
             openHero();
             return;
         }
-        if (!Watch.watch(act, p, installed, h.name)) {
-            Toast.makeText(act, act.getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
+        if (!installed.contains(Discover.packageFor(p.id))) {
+            if (!Watch.watch(act, p, installed, h.name)) {
+                Toast.makeText(act, act.getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
+            }
+            return;
         }
+        // the app's own link to the title, asked for only when Watch is pressed
+        net.links(h.name, h.kind, h.id, m -> {
+            if (!act.isDestroyed() && !Watch.watch(act, p, installed, h.name, m.get(p.id))) {
+                Toast.makeText(act, act.getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void openHero() {

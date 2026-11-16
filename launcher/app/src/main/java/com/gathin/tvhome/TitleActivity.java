@@ -51,6 +51,8 @@ public class TitleActivity extends Activity {
     private Discover.Provider primary;
     private Set<String> installed;
     private DiscoverUi.Sheet sheet;
+    /** Each provider's own link to this title (JustWatch), when known. */
+    private java.util.Map<Integer, String> links = new java.util.HashMap<>();
     /** The episodes row and its season. */
     private LinearLayout episodes;
     private int season;
@@ -194,6 +196,10 @@ public class TitleActivity extends Activity {
         column.removeAllViews();
         column.addView(title(name));
         column.addView(line(Discover.facts(d), 14, DiscoverUi.INK_SOFT, 14));
+        LinearLayout scores = ui.ratingsRow();
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-2, ui.px(22));
+        slp.topMargin = ui.px(12);
+        column.addView(scores, slp);
         if (!d.overview.isEmpty()) {
             TextView story = line(d.overview, 14, 0xDBFFFFFF, 14);
             story.setSingleLine(false);
@@ -205,6 +211,20 @@ public class TitleActivity extends Activity {
         }
         String credits = Discover.credits(d);
         if (!credits.isEmpty()) column.addView(line(credits, 12, DiscoverUi.INK_DIM, 10));
+        TextView awards = line("", 12, DiscoverUi.INK_DIM, 4);
+        awards.setVisibility(View.GONE);
+        column.addView(awards);
+        net.ratings(d.imdbId, r -> {
+            if (isDestroyed() || details != d) return;
+            ui.fillRatings(scores, r);
+            if (!r.awards.isEmpty()) {
+                awards.setText(r.awards);
+                awards.setVisibility(View.VISIBLE);
+            }
+        });
+        if (primary != null && installed.contains(Discover.packageFor(primary.id))) {
+            net.links(name, kind, id, m -> links = m);
+        }
 
         LinearLayout buttons = buttonsRow();
         if (primary != null) {
@@ -212,10 +232,12 @@ public class TitleActivity extends Activity {
             String label = getString(installed.contains(pkg) ? R.string.dc_watch_on : R.string.dc_get, primary.name);
             watchButton = button(0, primary, label, v -> watch());
             buttons.addView(watchButton, buttonLp());
+            if (!d.trailer.isEmpty()) buttons.addView(round(R.drawable.ic_lg_play, getString(R.string.dc_trailer), v -> trailer()), roundLp());
             buttons.addView(round(R.drawable.ic_dc_more, getString(R.string.dc_more), v -> showMore()), roundLp());
         } else {
             watchButton = button(R.drawable.ic_lg_search, null, getString(R.string.dc_google), v -> google());
             buttons.addView(watchButton, buttonLp());
+            if (!d.trailer.isEmpty()) buttons.addView(round(R.drawable.ic_lg_play, getString(R.string.dc_trailer), v -> trailer()), roundLp());
         }
         column.addView(buttons);
 
@@ -368,8 +390,15 @@ public class TitleActivity extends Activity {
             google();
             return;
         }
-        if (!Watch.watch(this, primary, installed, name)) {
+        if (!Watch.watch(this, primary, installed, name, links.get(primary.id))) {
             Toast.makeText(this, getString(R.string.dc_cant_open, primary.name), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void trailer() {
+        if (details == null || details.trailer.isEmpty()) return;
+        if (!Watch.trailer(this, details.trailer)) {
+            Toast.makeText(this, getString(R.string.dc_cant_open, "YouTube"), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -402,7 +431,7 @@ public class TitleActivity extends Activity {
                 String pkg = Discover.packageFor(p.id);
                 String value = getString(pkg == null ? R.string.dc_search_it : installed.contains(pkg) ? R.string.dc_open : R.string.dc_get_app);
                 View row = sheet.row(ui.providerLogo(p, 46, 26), p.name, value, v -> {
-                    if (!Watch.watch(this, p, installed, name)) {
+                    if (!Watch.watch(this, p, installed, name, links.get(p.id))) {
                         Toast.makeText(this, getString(R.string.dc_cant_open, p.name), Toast.LENGTH_SHORT).show();
                     }
                 });

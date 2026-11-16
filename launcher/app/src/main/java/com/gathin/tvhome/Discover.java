@@ -427,6 +427,8 @@ final class Discover {
 
     static final class Details {
         String kind = "movie", name = "", year = "", overview = "", backdrop = "", cert = "", director = "";
+        /** IMDb's id (for OMDb's scores) and a YouTube trailer's video id; empty when unknown. */
+        String imdbId = "", trailer = "";
         int id, minutes, seasons;
         int directorId;
         final List<String> genres = new ArrayList<>();
@@ -443,7 +445,8 @@ final class Discover {
     static String detailsUrl(String kind, int id) {
         boolean movie = "movie".equals(kind);
         return Tmdb.API + (movie ? "movie/" : "tv/") + id + "?language=" + Tmdb.LANGUAGE
-                + "&append_to_response=credits,watch/providers,recommendations," + (movie ? "release_dates" : "content_ratings");
+                + "&include_video_language=en,hi,null"
+                + "&append_to_response=credits,watch/providers,recommendations,external_ids,videos," + (movie ? "release_dates" : "content_ratings");
     }
 
     static Details parseDetails(JSONObject o, String kind) {
@@ -509,6 +512,11 @@ final class Discover {
             }
         }
         d.more.addAll(parseList(o.optJSONObject("recommendations"), null, 12));
+        d.imdbId = o.optString("imdb_id", "");
+        JSONObject ext = o.optJSONObject("external_ids");
+        if ((d.imdbId.isEmpty() || "null".equals(d.imdbId)) && ext != null) d.imdbId = ext.optString("imdb_id", "");
+        if ("null".equals(d.imdbId)) d.imdbId = "";
+        d.trailer = trailer(o.optJSONObject("videos"));
         d.cert = movie ? movieCert(o.optJSONObject("release_dates")) : tvCert(o.optJSONObject("content_ratings"));
         d.where = parseAvailability(o.optJSONObject("watch/providers"));
         return d;
@@ -551,6 +559,145 @@ final class Discover {
                 if (out.size() >= max) return out;
                 if (seen.add(p.id)) out.add(p);
             }
+        }
+        return out;
+    }
+
+    /** The YouTube trailer to play: an official trailer first, then any trailer, then a teaser. Empty when none. */
+    static String trailer(JSONObject videos) {
+        JSONArray list = videos == null ? null : videos.optJSONArray("results");
+        if (list == null) return "";
+        String any = "", teaser = "";
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject v = list.optJSONObject(i);
+            if (v == null || !"YouTube".equals(v.optString("site")) || v.optString("key").isEmpty()) continue;
+            String type = v.optString("type");
+            if ("Trailer".equals(type) && v.optBoolean("official")) return v.optString("key");
+            if ("Trailer".equals(type) && any.isEmpty()) any = v.optString("key");
+            if ("Teaser".equals(type) && teaser.isEmpty()) teaser = v.optString("key");
+        }
+        return !any.isEmpty() ? any : teaser;
+    }
+
+    // ---- OMDb: IMDb and Rotten Tomatoes ----
+
+    /** Scores and awards from OMDb; each empty when OMDb doesn't have it. */
+    static final class Ratings {
+        String imdb = "", votes = "", tomatoes = "", awards = "";
+
+        boolean isEmpty() {
+            return imdb.isEmpty() && tomatoes.isEmpty();
+        }
+    }
+
+    static String omdbUrl(String imdbId, String key) {
+        return "https://www.omdbapi.com/?i=" + enc(imdbId) + "&apikey=" + enc(key);
+    }
+
+    static Ratings parseOmdb(JSONObject o) {
+        Ratings r = new Ratings();
+        if (o == null || !"True".equals(o.optString("Response"))) return r;
+        r.imdb = known(o.optString("imdbRating"));
+        r.votes = votes(known(o.optString("imdbVotes")));
+        JSONArray list = o.optJSONArray("Ratings");
+        if (list != null) {
+            for (int i = 0; i < list.length(); i++) {
+                JSONObject x = list.optJSONObject(i);
+                if (x != null && "Rotten Tomatoes".equals(x.optString("Source"))) r.tomatoes = known(x.optString("Value"));
+            }
+        }
+        r.awards = awards(known(o.optString("Awards")));
+        return r;
+    }
+
+    /** "1,740,231" as "1.7M", "175,440" as "175K", "950" as is. */
+    static String votes(String raw) {
+        String digits = raw == null ? "" : raw.replace(",", "").trim();
+        if (digits.isEmpty()) return "";
+        try {
+            long n = Long.parseLong(digits);
+            if (n >= 1_000_000) return String.format(java.util.Locale.ROOT, "%.1fM", n / 1_000_000.0).replace(".0M", "M");
+            if (n >= 1_000) return (n / 1_000) + "K";
+            return String.valueOf(n);
+        } catch (NumberFormatException e) {
+            return "";
+        }
+    }
+
+    /** "Won 13 Primetime Emmys. 125 wins & 345 nominations total" as "Won 13 Primetime Emmys · 125 wins". */
+    static String awards(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "";
+        List<String> parts = new ArrayList<>();
+        for (String p : raw.split("\\.\\s*")) {
+            String t = p.trim();
+            if (t.isEmpty()) continue;
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d+) wins?\\b.*").matcher(t);
+            if (m.matches()) t = m.group(1) + (m.group(1).equals("1") ? " win" : " wins");
+            else if (t.matches("^\\d+ nominations? total$")) t = t.replace(" total", "");
+            parts.add(t);
+        }
+        return String.join(" \u00b7 ", parts);
+    }
+
+    private static String known(String v) {
+        return v == null || "N/A".equals(v.trim()) ? "" : v.trim();
+    }
+
+    // ---- JustWatch: the app's own link to a title ----
+
+    /** JustWatch's API, which apps use but JustWatch doesn't offer publicly: it can change or stop answering. */
+    static final String JUSTWATCH = "https://apis.justwatch.com/graphql";
+
+    /** A search for {@code name} in India, asking each offer for its Android TV link and its web page. */
+    static String justWatchBody(String name) {
+        try {
+            JSONObject vars = new JSONObject().put("country", Tmdb.REGION).put("language", "en").put("first", 5)
+                    .put("filter", new JSONObject().put("searchQuery", name));
+            return new JSONObject().put("query", "query S($country: Country!, $language: Language!, $first: Int!, $filter: TitleFilter) {"
+                    + " popularTitles(country: $country, filter: $filter, first: $first, sortBy: POPULAR, sortRandomSeed: 0) {"
+                    + " edges { node { objectType content(country: $country, language: $language) { externalIds { tmdbId } }"
+                    + " offers(country: $country, platform: WEB) { monetizationType standardWebURL"
+                    + " tv: deeplinkURL(platform: ANDROID_TV) package { packageId } } } } } }")
+                    .put("variables", vars).toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    /**
+     * Each provider's link to the title with this TMDB id and kind: the Android TV link when JustWatch has one,
+     * else the web page. Streaming offers come before rent and buy. Empty when the title isn't found.
+     */
+    static Map<Integer, String> parseJustWatch(JSONObject answer, String kind, int tmdbId) {
+        Map<Integer, String> out = new HashMap<>();
+        JSONObject data = answer == null ? null : answer.optJSONObject("data");
+        JSONObject titles = data == null ? null : data.optJSONObject("popularTitles");
+        JSONArray edges = titles == null ? null : titles.optJSONArray("edges");
+        if (edges == null) return out;
+        String type = "movie".equals(kind) ? "MOVIE" : "SHOW";
+        for (int i = 0; i < edges.length(); i++) {
+            JSONObject e = edges.optJSONObject(i);
+            JSONObject node = e == null ? null : e.optJSONObject("node");
+            JSONObject content = node == null ? null : node.optJSONObject("content");
+            JSONObject ids = content == null ? null : content.optJSONObject("externalIds");
+            if (ids == null || !type.equals(node.optString("objectType")) || !String.valueOf(tmdbId).equals(ids.optString("tmdbId"))) continue;
+            JSONArray offers = node.optJSONArray("offers");
+            if (offers == null) return out;
+            for (int pass = 0; pass < 2; pass++) {   // streaming and free first, then rent and buy
+                for (int j = 0; j < offers.length(); j++) {
+                    JSONObject o = offers.optJSONObject(j);
+                    JSONObject pkg = o == null ? null : o.optJSONObject("package");
+                    if (pkg == null) continue;
+                    String money = o.optString("monetizationType");
+                    boolean watchNow = "FLATRATE".equals(money) || "FREE".equals(money) || "ADS".equals(money);
+                    if ((pass == 0) != watchNow) continue;
+                    int id = pkg.optInt("packageId");
+                    String link = o.optString("tv", "");
+                    if (link.isEmpty() || "null".equals(link)) link = o.optString("standardWebURL", "");
+                    if (id != 0 && !link.isEmpty() && !"null".equals(link) && !out.containsKey(id)) out.put(id, link);
+                }
+            }
+            return out;
         }
         return out;
     }

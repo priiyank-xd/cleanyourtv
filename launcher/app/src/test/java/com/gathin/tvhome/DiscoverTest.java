@@ -187,4 +187,65 @@ public class DiscoverTest {
         assertEquals("52m \u00b7 12 Jun 2026", Discover.episodeLine(eps.get(0)));
         assertEquals("Episode 2", eps.get(1).name);
     }
+
+    @Test public void theTrailerIsAnOfficialYouTubeTrailerFirst() throws Exception {
+        assertEquals("off", Discover.trailer(new JSONObject("{\"results\":[{\"site\":\"YouTube\",\"type\":\"Teaser\",\"key\":\"t\"},"
+                + "{\"site\":\"Vimeo\",\"type\":\"Trailer\",\"key\":\"v\",\"official\":true},{\"site\":\"YouTube\",\"type\":\"Trailer\",\"key\":\"any\"},"
+                + "{\"site\":\"YouTube\",\"type\":\"Trailer\",\"key\":\"off\",\"official\":true}]}")));
+        assertEquals("t", Discover.trailer(new JSONObject("{\"results\":[{\"site\":\"YouTube\",\"type\":\"Teaser\",\"key\":\"t\"}]}")));
+        assertEquals("", Discover.trailer(null));
+    }
+
+    @Test public void detailsKnowTheImdbIdForMoviesAndSeries() throws Exception {
+        assertEquals("tt1", Discover.parseDetails(new JSONObject("{\"id\":1,\"title\":\"M\",\"imdb_id\":\"tt1\"}"), "movie").imdbId);
+        assertEquals("tt2", Discover.parseDetails(new JSONObject("{\"id\":2,\"name\":\"S\",\"external_ids\":{\"imdb_id\":\"tt2\"}}"), "tv").imdbId);
+        assertEquals("", Discover.parseDetails(new JSONObject("{\"id\":3,\"name\":\"S\",\"external_ids\":{\"imdb_id\":null}}"), "tv").imdbId);
+        assertTrue(Discover.detailsUrl("tv", 2).contains("external_ids,videos"));
+    }
+
+    @Test public void omdbScoresReadAsTheyShow() throws Exception {
+        Discover.Ratings r = Discover.parseOmdb(new JSONObject("{\"Response\":\"True\",\"imdbRating\":\"7.6\",\"imdbVotes\":\"849,165\","
+                + "\"Ratings\":[{\"Source\":\"Internet Movie Database\",\"Value\":\"7.6/10\"},{\"Source\":\"Rotten Tomatoes\",\"Value\":\"85%\"}],"
+                + "\"Awards\":\"Nominated for 1 Oscar. 15 wins & 62 nominations total\"}"));
+        assertEquals("7.6", r.imdb);
+        assertEquals("849K", r.votes);
+        assertEquals("85%", r.tomatoes);
+        assertEquals("Nominated for 1 Oscar · 15 wins", r.awards);
+        Discover.Ratings none = Discover.parseOmdb(new JSONObject("{\"Response\":\"True\",\"imdbRating\":\"N/A\",\"Awards\":\"N/A\"}"));
+        assertTrue(none.isEmpty());
+        assertEquals("", none.awards);
+        assertTrue(Discover.parseOmdb(new JSONObject("{\"Response\":\"False\",\"Error\":\"Invalid API key!\"}")).isEmpty());
+    }
+
+    @Test public void votesAndAwardsAreShortened() {
+        assertEquals("1.7M", Discover.votes("1,740,231"));
+        assertEquals("2M", Discover.votes("2,000,000"));
+        assertEquals("950", Discover.votes("950"));
+        assertEquals("", Discover.votes("N/A"));
+        assertEquals("Won 13 Primetime Emmys · 125 wins", Discover.awards("Won 13 Primetime Emmys. 125 wins & 345 nominations total"));
+        assertEquals("1 win", Discover.awards("1 win & 2 nominations total"));
+        assertEquals("4 nominations", Discover.awards("4 nominations total"));
+    }
+
+    @Test public void justWatchAsksForIndiaAndAndroidTvLinks() throws Exception {
+        JSONObject body = new JSONObject(Discover.justWatchBody("Sacred \"Games\""));
+        assertEquals("IN", body.getJSONObject("variables").getString("country"));
+        assertEquals("Sacred \"Games\"", body.getJSONObject("variables").getJSONObject("filter").getString("searchQuery"));
+        assertTrue(body.getString("query").contains("deeplinkURL(platform: ANDROID_TV)"));
+    }
+
+    @Test public void justWatchLinksMatchTheTmdbTitleAndPreferStreaming() throws Exception {
+        JSONObject a = new JSONObject("{\"data\":{\"popularTitles\":{\"edges\":["
+                + "{\"node\":{\"objectType\":\"MOVIE\",\"content\":{\"externalIds\":{\"tmdbId\":\"79352\"}},\"offers\":[]}},"
+                + "{\"node\":{\"objectType\":\"SHOW\",\"content\":{\"externalIds\":{\"tmdbId\":\"79352\"}},\"offers\":["
+                + "{\"monetizationType\":\"BUY\",\"standardWebURL\":\"https://buy\",\"tv\":null,\"package\":{\"packageId\":8}},"
+                + "{\"monetizationType\":\"FLATRATE\",\"standardWebURL\":\"https://www.netflix.com/title/1\",\"tv\":\"intent://www.netflix.com/watch/1#Intent;scheme=https;package=com.netflix.ninja;end\",\"package\":{\"packageId\":8}},"
+                + "{\"monetizationType\":\"ADS\",\"standardWebURL\":\"https://www.hotstar.com/in/2\",\"tv\":null,\"package\":{\"packageId\":2336}}]}}]}}}");
+        java.util.Map<Integer, String> links = Discover.parseJustWatch(a, "tv", 79352);
+        assertTrue(links.get(8).startsWith("intent://www.netflix.com/watch/1"));
+        assertEquals("https://www.hotstar.com/in/2", links.get(2336));
+        assertTrue(Discover.parseJustWatch(a, "movie", 79352).isEmpty());   // the movie with that id has no offers
+        assertTrue(Discover.parseJustWatch(a, "tv", 1).isEmpty());
+        assertTrue(Discover.parseJustWatch(null, "tv", 1).isEmpty());
+    }
 }

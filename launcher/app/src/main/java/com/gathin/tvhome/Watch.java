@@ -45,9 +45,56 @@ final class Watch {
      * for the title when no app is known for the service. False when nothing could be opened.
      */
     static boolean watch(Context ctx, Discover.Provider p, Set<String> installed, String title) {
+        return watch(ctx, p, installed, title, null);
+    }
+
+    /** As above, opening the app on the title itself when {@code link} (from JustWatch) is known. */
+    static boolean watch(Context ctx, Discover.Provider p, Set<String> installed, String title, String link) {
         String pkg = Discover.packageFor(p.id);
         if (pkg == null) return googleSearch(ctx, title);
-        return installed.contains(pkg) ? openApp(ctx, pkg) : getApp(ctx, pkg);
+        if (!installed.contains(pkg)) return getApp(ctx, pkg);
+        if (link != null && openLink(ctx, link, pkg)) {
+            LastOpened.record(ctx, pkg);
+            return true;
+        }
+        return openApp(ctx, pkg);
+    }
+
+    /**
+     * Opens {@code pkg} on a title from a JustWatch link: an Android TV intent:// link or a web page. Whatever the
+     * link says, only that app is asked to open it, as a plain view: no component, selector or permission grants.
+     */
+    static boolean openLink(Context ctx, String link, String pkg) {
+        Intent i;
+        try {
+            if (link.startsWith("intent:")) {
+                Intent parsed = Intent.parseUri(link, Intent.URI_INTENT_SCHEME);
+                if (parsed.getData() == null) return false;
+                i = new Intent(Intent.ACTION_VIEW, parsed.getData());
+                if (parsed.getExtras() != null) i.putExtras(parsed.getExtras());   // e.g. Netflix's source tag
+            } else if (link.startsWith("https://") || link.startsWith("http://")) {
+                i = new Intent(Intent.ACTION_VIEW, Uri.parse(link));
+            } else {
+                return false;
+            }
+        } catch (java.net.URISyntaxException e) {
+            return false;
+        }
+        i.setPackage(pkg);
+        i.addCategory(Intent.CATEGORY_BROWSABLE);
+        if (ctx.getPackageManager().resolveActivity(i, 0) == null) {
+            i.removeCategory(Intent.CATEGORY_BROWSABLE);   // some TV apps take the link without BROWSABLE
+            if (ctx.getPackageManager().resolveActivity(i, 0) == null) return false;
+        }
+        return start(ctx, i);
+    }
+
+    /** A YouTube trailer, in the YouTube app when there is one. */
+    static boolean trailer(Context ctx, String key) {
+        Uri u = Uri.parse("https://www.youtube.com/watch?v=" + Uri.encode(key));
+        return start(ctx, new Intent(Intent.ACTION_VIEW, u).setPackage("com.google.android.youtube.tv"))
+                || start(ctx, new Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:" + Uri.encode(key))))
+                || start(ctx, new Intent(Intent.ACTION_VIEW, u));
     }
 
     /** Every package a title's providers could open, installed or not. */

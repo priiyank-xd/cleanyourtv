@@ -345,6 +345,59 @@ final class DiscoverUi {
         t.setTextSize(TypedValue.COMPLEX_UNIT_PX, (name != null && name.length() > 28 ? 38 : 46) * u);
     }
 
+    /**
+     * Scores as a row: IMDb's yellow badge with the rating and vote count, Rotten Tomatoes' tomato with the
+     * Tomatometer. Filled in later by {@link #fillRatings}; empty (and taking no room) until then.
+     */
+    LinearLayout ratingsRow() {
+        LinearLayout row = new LinearLayout(act);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setVisibility(View.GONE);
+        return row;
+    }
+
+    void fillRatings(LinearLayout row, Discover.Ratings r) {
+        row.removeAllViews();
+        if (r == null || r.isEmpty()) {
+            row.setVisibility(View.GONE);
+            return;
+        }
+        if (!r.imdb.isEmpty()) {
+            TextView badge = new TextView(act);
+            badge.setText(R.string.dc_imdb);
+            badge.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+            badge.setTextSize(TypedValue.COMPLEX_UNIT_PX, 11 * u);
+            badge.setTextColor(0xFF000000);
+            badge.setIncludeFontPadding(false);
+            badge.setPadding(px(5), px(3), px(5), px(3));
+            badge.setBackground(round(0xFFF5C518, px(4)));
+            row.addView(badge);
+            TextView value = text(r.imdb, 14, R.string.font_medium, INK);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+            lp.leftMargin = px(7);
+            row.addView(value, lp);
+            if (!r.votes.isEmpty()) {
+                TextView votes = text(r.votes, 12, R.string.font_regular, INK_DIM);
+                LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(-2, -2);
+                vlp.leftMargin = px(6);
+                row.addView(votes, vlp);
+            }
+        }
+        if (!r.tomatoes.isEmpty()) {
+            ImageView tomato = new ImageView(act);
+            tomato.setImageResource(R.drawable.ic_dc_tomato);
+            tomato.setContentDescription(act.getString(R.string.dc_rotten_tomatoes));
+            LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(px(18), px(18));
+            tlp.leftMargin = r.imdb.isEmpty() ? 0 : px(18);
+            row.addView(tomato, tlp);
+            TextView value = text(r.tomatoes, 14, R.string.font_medium, INK);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+            lp.leftMargin = px(6);
+            row.addView(value, lp);
+        }
+        row.setVisibility(View.VISIBLE);
+    }
+
     /** A shelf's title. */
     TextView shelfTitle(String s) {
         return text(s, 16, R.string.font_medium, INK);

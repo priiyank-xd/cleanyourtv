@@ -8,6 +8,8 @@ def localProps = new Properties()
 def localFile = rootProject.file('local.properties')
 if (localFile.exists()) localFile.withInputStream { localProps.load(it) }
 def tmdbToken = localProps.getProperty('tmdb.read_token', System.getenv('TMDB_READ_TOKEN') ?: '')
+// Fork: the OMDb key for IMDb and Rotten Tomatoes scores on Discover's pages; without one the scores stay hidden.
+def omdbKey = localProps.getProperty('omdb.api_key', System.getenv('OMDB_API_KEY') ?: '')
 
 android {
     namespace 'com.gathin.tvhome'
@@ -23,6 +25,7 @@ android {
         versionCode 13
         versionName '3.4'
         buildConfigField 'String', 'TMDB_TOKEN', "\"${tmdbToken}\""
+        buildConfigField 'String', 'OMDB_KEY', "\"${omdbKey}\""
     }
 
     buildFeatures {

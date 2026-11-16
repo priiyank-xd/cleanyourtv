@@ -140,4 +140,7 @@
     <string name="dc_movie" translatable="false">Movie</string>
     <string name="dc_one_series" translatable="false">Series</string>
     <string name="dc_pair" translatable="false">%1$s \u00b7 %2$s</string>
+    <string name="dc_imdb" translatable="false">IMDb</string>
+    <string name="dc_rotten_tomatoes" translatable="false">Rotten Tomatoes</string>
+    <string name="dc_trailer" translatable="false">Trailer</string>
 </resources>

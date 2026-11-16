@@ -129,8 +129,13 @@ final class DiscoverNet {
      * from TMDB, else (no network) the saved copy marked offline. Null when there is neither.
      */
     void answer(String url, long freshMs, Done<Answer> done) {
+        answer(url, null, freshMs, done);
+    }
+
+    /** As {@link #answer(String, long, Done)}, POSTing {@code body} as JSON when it isn't null (JustWatch). */
+    void answer(String url, String body, long freshMs, Done<Answer> done) {
         calls.execute(() -> {
-            File f = new File(answers, sha1(url) + ".json");
+            File f = new File(answers, sha1(body == null ? url : url + "\n" + body) + ".json");
             JSONObject saved = null;
             long at = 0;
             try {
@@ -147,7 +152,7 @@ final class DiscoverNet {
                 result = new Answer(saved, false, at);
             } else {
                 try {
-                    JSONObject fresh = Tmdb.get(url, token);
+                    JSONObject fresh = url.startsWith(Tmdb.API) ? Tmdb.get(url, token) : http(url, body);
                     long now = System.currentTimeMillis();
                     saveAnswer(f, new JSONObject().put("at", now).put("body", fresh));
                     result = new Answer(fresh, false, now);
@@ -159,6 +164,58 @@ final class DiscoverNet {
             Answer r = result;
             main.post(() -> done.on(r));
         });
+    }
+
+    /** A GET (or a JSON POST when {@code body} isn't null) to a service other than TMDB: no TMDB token sent. */
+    private static JSONObject http(String url, String body) throws Exception {
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        c.setConnectTimeout(10_000);
+        c.setReadTimeout(15_000);
+        c.setRequestProperty("Accept", "application/json");
+        try {
+            if (body != null) {
+                c.setRequestMethod("POST");
+                c.setDoOutput(true);
+                c.setRequestProperty("Content-Type", "application/json");
+                try (java.io.OutputStream out = c.getOutputStream()) {
+                    out.write(body.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            int code = c.getResponseCode();
+            if (code != 200) throw new java.io.IOException("HTTP " + code);
+            try (java.io.InputStream in = c.getInputStream(); java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream()) {
+                byte[] b = new byte[16 * 1024];
+                int n;
+                while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+                return new JSONObject(new String(buf.toByteArray(), StandardCharsets.UTF_8));
+            }
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    // ---- OMDb and JustWatch ----
+
+    private static final long WEEK_MS = 7 * 24 * HOURS;
+
+    boolean hasScores() {
+        return BuildConfig.OMDB_KEY != null && !BuildConfig.OMDB_KEY.trim().isEmpty();
+    }
+
+    /** IMDb and Rotten Tomatoes scores for an IMDb id, kept a week; empty scores when unknown or with no key. */
+    void ratings(String imdbId, Done<Discover.Ratings> done) {
+        if (!hasScores() || imdbId == null || imdbId.isEmpty()) {
+            done.on(new Discover.Ratings());
+            return;
+        }
+        answer(Discover.omdbUrl(imdbId, BuildConfig.OMDB_KEY.trim()), null, WEEK_MS,
+                a -> done.on(a == null ? new Discover.Ratings() : Discover.parseOmdb(a.json)));
+    }
+
+    /** Each provider's own link to a title (JustWatch), kept a day; empty when JustWatch can't say. */
+    void links(String name, String kind, int tmdbId, Done<Map<Integer, String>> done) {
+        answer(Discover.JUSTWATCH, Discover.justWatchBody(name), 24 * HOURS,
+                a -> done.on(a == null ? new java.util.HashMap<>() : Discover.parseJustWatch(a.json, kind, tmdbId)));
     }
 
     private void saveAnswer(File f, JSONObject w) {
