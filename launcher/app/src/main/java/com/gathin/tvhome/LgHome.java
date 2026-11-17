@@ -796,8 +796,9 @@ final class LgHome {
         title.setLetterSpacing(0.14f);
         place(card, title, 16, 12, -1, -1);
         // Calibration patterns stay in the Settings panel (Projector).
-        int[] icons = {R.drawable.ic_wifi, R.drawable.ic_lg_bluetooth, R.drawable.ic_lg_brightness, R.drawable.ic_lg_cast, R.drawable.ic_input};
-        int[] labels = {R.string.lg_wifi, R.string.lg_bluetooth, R.string.lg_picture, R.string.lg_cast, R.string.lg_input};
+        // Fork (Arc 5): Bluetooth, Brightness, AirPlay and Sleep timer open those apps; Input lives in the Settings panel.
+        int[] icons = {R.drawable.ic_wifi, R.drawable.ic_lg_bluetooth, R.drawable.ic_lg_brightness, R.drawable.ic_lg_airplay, R.drawable.ic_lg_sleep};
+        int[] labels = {R.string.lg_wifi, R.string.lg_bluetooth, R.string.lg_brightness, R.string.lg_airplay, R.string.lg_sleep};
         float gap = (296 - 28 - QUICK * 48) / (float) (QUICK - 1);
         for (int i = 0; i < QUICK; i++) {
             float x = 14 + i * (48 + gap);
@@ -1294,11 +1295,23 @@ final class LgHome {
         if (focus.startsWith("c") && n < chips.size()) { LgApps.launch(act, chips.get(n)); return; }
         if (focus.startsWith("q")) {
             if (n == 0) start(SystemSettings.intent(act, Settings.ACTION_WIFI_SETTINGS));
-            else if (n == 1) start(SystemSettings.bluetoothIntent(act));
-            else if (n == 2) start(SystemSettings.pictureIntent(act));   // picture, brightness
-            else if (n == 3) start(SystemSettings.castIntent(act));
-            else openInputs();
+            else if (n == 1) start(appOr(act, BT_CONNECT, SystemSettings.bluetoothIntent(act)));
+            else if (n == 2) start(appOr(act, BRIGHTNESS, SystemSettings.pictureIntent(act)));
+            else if (n == 3) start(appOr(act, AIRPLAY, SystemSettings.castIntent(act)));
+            else start(appOr(act, SLEEP_TIMER, SystemSettings.intent(act, Settings.ACTION_SETTINGS)));
         }
+    }
+
+    /** Fork: the Arc 5's tool apps, kept off the app band and reached from quick settings and the Settings panel. */
+    static final String BT_CONNECT = "com.gathin.btconnect", BRIGHTNESS = "io.github.maxhayim.brightness",
+            AIRPLAY = "io.github.jqssun.airplay", SLEEP_TIMER = "io.github.luyzfernando08.sleeptimer",
+            DNSNET = "dev.clombardo.dnsnet";
+
+    /** The app's TV launch intent, or {@code fallback} when it isn't installed. */
+    static Intent appOr(Context ctx, String pkg, Intent fallback) {
+        Intent i = ctx.getPackageManager().getLeanbackLaunchIntentForPackage(pkg);
+        if (i == null) i = ctx.getPackageManager().getLaunchIntentForPackage(pkg);
+        return i != null ? i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) : fallback;
     }
 
     /**

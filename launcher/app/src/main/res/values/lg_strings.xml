@@ -14,6 +14,17 @@
     <string name="lg_last_watched" translatable="false">Last watched</string>
     <string name="lg_input" translatable="false">Input</string>
     <string name="lg_picture" translatable="false">Picture</string>
+    <string name="lg_brightness" translatable="false">Brightness</string>
+    <string name="lg_airplay" translatable="false">AirPlay</string>
+    <string name="lg_sleep" translatable="false">Sleep timer</string>
+    <string name="hub_tools" translatable="false">Tools</string>
+    <string name="hub_bt_connect" translatable="false">Bluetooth Connect</string>
+    <string name="hub_bt_connect_sub" translatable="false">Connect a paired speaker or headphones</string>
+    <string name="hub_brightness_sub" translatable="false">Dim below the minimum, warm night mode</string>
+    <string name="hub_airplay_sub" translatable="false">Mirror an iPhone or Mac to the projector</string>
+    <string name="hub_sleep_sub" translatable="false">Turn off after 15 to 120 minutes</string>
+    <string name="hub_dnsnet" translatable="false">DNSNet</string>
+    <string name="hub_dnsnet_sub" translatable="false">Ad and tracker blocking</string>
     <string name="lg_profile" translatable="false">Profile</string>
     <string name="lg_reorder" translatable="false">Reorder apps</string>
     <string name="lg_reorder_on" translatable="false">Reordering apps \u00b7 Back when done</string>

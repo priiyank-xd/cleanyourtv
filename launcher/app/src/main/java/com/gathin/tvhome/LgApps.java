@@ -62,6 +62,7 @@ final class LgApps {
             apps.add(new App(pkg, label, new ComponentName(pkg, ri.activityInfo.name), art, glyph, AppAdapter.vividColor(glyph)));
         }
         for (App a : apps) a.lastOpened = LastOpened.get(ctx, a.pkg);
+        dropOrderIfDockChanged(ctx, cfg.dockApps);
         Collections.sort(apps, order(savedOrder(ctx), cfg.dockApps));
         return apps;
     }
@@ -77,6 +78,16 @@ final class LgApps {
     }
 
     private static final String ORDER_PREFS = "lg_app_order", ORDER_KEY = "order";
+
+    /**
+     * Fork: a theme that brings a new dock_apps order replaces the order set with the reorder circle, once; reordering
+     * on the TV afterwards is kept until the theme's order changes again.
+     */
+    private static void dropOrderIfDockChanged(Context ctx, List<String> dock) {
+        android.content.SharedPreferences p = ctx.getSharedPreferences(ORDER_PREFS, Context.MODE_PRIVATE);
+        String sig = String.join(",", dock);
+        if (!sig.equals(p.getString("dock", ""))) p.edit().remove(ORDER_KEY).putString("dock", sig).apply();
+    }
 
     static List<String> savedOrder(Context ctx) {
         String s = ctx.getSharedPreferences(ORDER_PREFS, Context.MODE_PRIVATE).getString(ORDER_KEY, "");

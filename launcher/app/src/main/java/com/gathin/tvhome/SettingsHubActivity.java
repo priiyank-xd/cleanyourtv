@@ -123,6 +123,14 @@ public class SettingsHubActivity extends Activity {
         actionRow(list, R.drawable.ic_lg_bluetooth, R.string.hub_bluetooth, R.string.hub_bluetooth_sub,
                 v -> open(SystemSettings.bluetoothIntent(this)));
 
+        // Fork (Arc 5): the tool apps kept off Home's app band, each shown only when it is installed.
+        section(list, R.string.hub_tools);
+        toolRow(list, R.drawable.ic_lg_bluetooth, R.string.hub_bt_connect, R.string.hub_bt_connect_sub, LgHome.BT_CONNECT);
+        toolRow(list, R.drawable.ic_lg_brightness, R.string.lg_brightness, R.string.hub_brightness_sub, LgHome.BRIGHTNESS);
+        toolRow(list, R.drawable.ic_lg_airplay, R.string.lg_airplay, R.string.hub_airplay_sub, LgHome.AIRPLAY);
+        toolRow(list, R.drawable.ic_lg_sleep, R.string.lg_sleep, R.string.hub_sleep_sub, LgHome.SLEEP_TIMER);
+        toolRow(list, R.drawable.ic_lg_shield, R.string.hub_dnsnet, R.string.hub_dnsnet_sub, LgHome.DNSNET);
+
         section(list, R.string.hub_on_home);
         choiceRow(list, R.drawable.ic_picture, R.string.lg_background_label,
                 new String[]{getString(R.string.lg_background_picture), getString(R.string.lg_background_movie_art)},
@@ -307,6 +315,11 @@ public class SettingsHubActivity extends Activity {
         r.view.setOnClickListener(click);
         r.view.setOnKeyListener((v, code, e) -> code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT);
         return r;
+    }
+
+    private void toolRow(LinearLayout list, int icon, int title, int sub, String pkg) {
+        Intent launch = LgHome.appOr(this, pkg, null);
+        if (launch != null) actionRow(list, icon, title, sub, v -> open(launch));
     }
 
     private void settingsRow(LinearLayout list, int icon, int title, int sub, String action) {
