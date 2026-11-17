@@ -66,6 +66,18 @@ final class Glyphs {
         put("twitch", "tv.twitch.android.app", "tv.twitch.android.viewer");
         put("crunchyroll", "com.crunchyroll.crunchyroid");
         put("discoveryplus", "com.discoveryplus.tv.android", "com.discovery.discoveryplus.androidtv");
+        put("browser", "com.internet.tvbrowser");
+        put("cast", "io.github.jqssun.airplay", "io.github.maxhayim.airplaystatus");
+        put("files", "io.github.maxhayim.filescard");
+        put("amaze", "com.amaze.filemanager");
+        put("tldr", "ai.lumiolabs.tldr");
+        put("bluetooth", "com.gathin.btconnect");
+        put("playgames", "com.google.android.play.games");
+        put("mediaplayer", "com.sdmc.implayer");
+        put("realdebrid", "com.yablio.realdebridtv");
+        put("dnsnet", "dev.clombardo.dnsnet");
+        put("sleeptimer", "io.github.luyzfernando08.sleeptimer");
+        put("brightness", "io.github.maxhayim.brightness");
     }
 
     private static void put(String glyph, String... packages) {
@@ -101,6 +113,15 @@ final class Glyphs {
             case "twitch": return R.drawable.glyph_twitch;
             case "crunchyroll": return R.drawable.glyph_crunchyroll;
             case "discoveryplus": return R.drawable.glyph_discoveryplus;
+            case "amaze": return R.drawable.glyph_amaze;
+            case "tldr": return R.drawable.glyph_tldr;
+            case "bluetooth": return R.drawable.glyph_bluetooth;
+            case "playgames": return R.drawable.glyph_playgames;
+            case "mediaplayer": return R.drawable.glyph_mediaplayer;
+            case "realdebrid": return R.drawable.glyph_realdebrid;
+            case "dnsnet": return R.drawable.glyph_dnsnet;
+            case "sleeptimer": return R.drawable.glyph_sleeptimer;
+            case "brightness": return R.drawable.glyph_brightness;
             default: return 0;
         }
     }

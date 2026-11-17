@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fork: minimal glyph for the LG-style home's app band (48x48 grid): Unreal Debrid's plug logo, flat teal. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <group android:scaleX="0.31" android:scaleY="0.31" android:translateX="1.0" android:translateY="1.0">
+        <path android:pathData="M89.22,121.44L121.15,89.47C138.34,72.26 138.28,44.29 121.01,27C103.75,9.72 75.83,9.66 58.64,26.87L26.72,58.84L37.49,69.63L52.62,54.49L67.92,69.82L52.8,84.96L62.93,95.1L78.05,79.96L93.35,95.29L78.23,110.43L89.22,121.44ZM89.21,29.79C81.62,29.74 74.35,32.72 69.02,38.07L57.41,49.69L72.68,64.99L84.29,53.36C85.63,52.03 87.44,51.28 89.34,51.29C91.24,51.31 93.07,52.07 94.42,53.42C95.77,54.78 96.53,56.6 96.54,58.51C96.55,60.41 95.81,62.23 94.48,63.56L82.87,75.19L98.15,90.49L109.75,78.86C115.09,73.52 118.07,66.24 118.02,58.63C117.97,51.03 114.91,43.72 109.51,38.31C104.11,32.9 96.81,29.83 89.21,29.79Z" android:fillColor="#FF4DB6AC" />
+        <path android:pathData="M37.07,69.56L52.5,84.99L31.71,105.78C28.64,108.84 23.65,108.81 20.55,105.71L16.34,101.5C13.24,98.4 13.22,93.41 16.28,90.35L37.07,69.56Z" android:fillColor="#FF4DB6AC" />
+        <path android:pathData="M63.01,95.5L78.44,110.93L57.65,131.72C54.59,134.79 49.6,134.76 46.5,131.66L42.29,127.45C39.19,124.35 39.16,119.36 42.22,116.29L63.01,95.5Z" android:fillColor="#FF4DB6AC" />
+    </group>
+</vector>
