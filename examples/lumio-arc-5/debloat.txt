@@ -16,8 +16,11 @@
 # com.android.providers.downloads, and MediaTek/OEM USB or file managers) so external
 # flash drives function for video playback.
 #
-# Stock launcher handover: com.google.android.apps.tv.launcherx and setup wizard
-# com.google.android.tungsten.setupwraith remain enabled; com.gathin.tvhome handles Home.
+# Stock launcher handover: com.google.android.apps.tv.launcherx stays enabled until
+# launcher/build-and-install.sh disables it; com.gathin.tvhome handles Home.
+# Setup wizard: its .RecoveryActivity answers HOME ahead of an installed launcher on this
+# firmware, so it is disabled below (check `dumpsys wifi | grep -o 'cname=[^ ]*'` first).
+com.google.android.tungsten.setupwraith
 
 # Google feedback and telemetry
 com.google.android.feedback
