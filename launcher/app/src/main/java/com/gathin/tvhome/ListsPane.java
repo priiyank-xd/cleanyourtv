@@ -141,6 +141,7 @@ final class ListsPane implements DiscoverActivity.Pane {
         LinearLayout content = new LinearLayout(act);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setClipChildren(false);
+        content.setClipToPadding(false);   // the focused pill reaches into the padding (negative margin below)
         content.setPadding(ui.px(56), ui.px(100), ui.px(56), 0);
         TextView t = ui.text(act.getString(R.string.dc_lists_signed_out), 16, R.string.font_regular, DiscoverUi.INK_SOFT);
         t.setSingleLine(false);

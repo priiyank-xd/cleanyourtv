@@ -221,6 +221,15 @@ final class HomePane implements DiscoverActivity.Pane {
             act.setChrome(Math.max(0f, 1f - y / (float) ui.px(120)));
             backdrop.setAlpha(Math.max(0.15f, 1f - y / (float) ui.px(420)));
         });
+        // back up into the hero, the page returns all the way to the top (not just far enough to show the buttons)
+        scroll.getViewTreeObserver().addOnGlobalFocusChangeListener((was, now) -> {
+            for (View v = now; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) {
+                if (v == heroBox) {
+                    if (scroll.getScrollY() != 0) scroll.smoothScrollTo(0, 0);
+                    return;
+                }
+            }
+        });
         skeleton();
     }
 
