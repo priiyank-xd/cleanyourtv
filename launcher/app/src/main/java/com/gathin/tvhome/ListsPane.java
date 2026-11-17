@@ -147,10 +147,11 @@ final class ListsPane implements DiscoverActivity.Pane {
         t.setMaxWidth(ui.px(560));
         t.setLineSpacing(0, 1.35f);
         content.addView(t, new LinearLayout.LayoutParams(-2, -2));
-        TextView connect = ui.capsule(act.getString(R.string.dc_connect_title));
+        TextView connect = ui.action(act.getString(R.string.dc_connect_title));
         connect.setOnClickListener(v -> act.startActivity(new Intent(act, ConnectActivity.class)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
         lp.topMargin = ui.px(22);
+        lp.leftMargin = -ui.px(DiscoverUi.ACTION_PAD);   // its words line up with the text above
         content.addView(connect, lp);
         page.addView(content, new FrameLayout.LayoutParams(-1, -1));
         firstFocus = connect;

@@ -177,10 +177,10 @@ public class ConnectActivity extends Activity {
         body(getString(R.string.dc_connected_note));
         LinearLayout buttons = new LinearLayout(this);
         buttons.setClipChildren(false);
-        TextView done = ui.capsule(getString(R.string.dc_done));
+        TextView done = ui.action(getString(R.string.dc_done));
         done.setOnClickListener(v -> finish());
         buttons.addView(done, new LinearLayout.LayoutParams(-2, ui.px(44)));
-        TextView off = ui.capsule(getString(R.string.dc_disconnect));
+        TextView off = ui.action(getString(R.string.dc_disconnect));
         off.setOnClickListener(v -> disconnect());
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-2, ui.px(44));
         olp.leftMargin = ui.px(12);
@@ -200,7 +200,7 @@ public class ConnectActivity extends Activity {
         title(head);
         body(text);
         if (button != null) {
-            TextView b = ui.capsule(button);
+            TextView b = ui.action(button);
             b.setOnClickListener(click);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
             lp.topMargin = ui.px(22);

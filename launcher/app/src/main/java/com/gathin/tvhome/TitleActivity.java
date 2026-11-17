@@ -284,18 +284,11 @@ public class TitleActivity extends Activity {
                     firstOne = false;
                 }
             }
-            TextView all = ui.text(getString(R.string.dc_all_options) + "  ›", 15, R.string.font_medium, DiscoverUi.INK);
-            all.setGravity(Gravity.CENTER);
-            all.setPadding(ui.px(14), 0, ui.px(14), 0);
-            all.setFocusable(true);
-            all.setClickable(true);
-            all.setOnFocusChangeListener((v, has) -> {
-                all.setBackground(has ? ui.focusedGlass(16) : null);
-                all.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(ui.ms(160)).start();
-            });
+            // the same as "Watch trailer": plain words, Home's pill around them when focused
+            TextView all = ui.action(getString(R.string.dc_all_options) + "  ›");
             all.setOnClickListener(v -> showWhere());
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(40));
-            lp.leftMargin = ui.px(also.isEmpty() ? -14 : 18);   // alone, its words line up with "Watch on"
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
+            lp.leftMargin = ui.px(also.isEmpty() ? -DiscoverUi.ACTION_PAD : 6);   // alone, its words line up with "Watch on"
             row.addView(all, lp);
             LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-2, -2);
             rlp.topMargin = ui.px(8);
@@ -448,11 +441,8 @@ public class TitleActivity extends Activity {
 
     /** A line under Watch on: just the words "Watch trailer", a button (Home's pill around it when focused). */
     private View trailerRow() {
-        TextView t = ui.text(getString(R.string.dc_watch_trailer), 15, R.string.font_medium, DiscoverUi.INK);
-        t.setGravity(Gravity.CENTER_VERTICAL);
-        t.setPadding(ui.px(16), 0, ui.px(18), 0);
+        TextView t = ui.action(getString(R.string.dc_watch_trailer));
         t.setContentDescription(getString(R.string.dc_trailer));
-        ui.focusBare(t, 1.06f);
         t.setOnClickListener(v -> trailer());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
         lp.topMargin = ui.px(10);

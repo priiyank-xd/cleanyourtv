@@ -392,7 +392,7 @@ final class HomePane implements DiscoverActivity.Pane {
         String when = savedAt == Long.MAX_VALUE ? "" : DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(savedAt));
         pill.addView(ui.text(any && !when.isEmpty() ? act.getString(R.string.dc_offline_saved, when) : act.getString(R.string.dc_offline_title),
                 14, R.string.font_regular, DiscoverUi.INK));
-        TextView retry = ui.capsule(act.getString(R.string.dc_retry));
+        TextView retry = ui.action(act.getString(R.string.dc_retry));
         retry.setTag("retry");
         retry.setOnClickListener(v -> {
             loaded = false;
@@ -479,14 +479,13 @@ final class HomePane implements DiscoverActivity.Pane {
     private void paintRetry() {
         boolean had = watch.hasFocus();
         watch.removeAllViews();
-        TextView retry = ui.text(act.getString(R.string.dc_retry), 15, R.string.font_medium, DiscoverUi.INK);
-        retry.setGravity(Gravity.CENTER);
-        retry.setPadding(ui.px(22), 0, ui.px(22), 0);
-        ui.focusGlass(retry, 24);
+        TextView retry = ui.action(act.getString(R.string.dc_retry));
         retry.setOnClickListener(v -> {
             if (!loading) load();
         });
-        watch.addView(retry, new LinearLayout.LayoutParams(-2, ui.px(48)));
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-2, ui.px(48));
+        rlp.leftMargin = -ui.px(DiscoverUi.ACTION_PAD);   // its words line up with the title above
+        watch.addView(retry, rlp);
         watch.setVisibility(View.VISIBLE);
         heroes.clear();
         if (had) retry.requestFocus();

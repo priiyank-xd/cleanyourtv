@@ -707,7 +707,22 @@ final class DiscoverUi {
         return img;
     }
 
-    /** A capsule of text that is glass, brighter while focused. */
+    /**
+     * An action in words ("Watch trailer", "All options", Retry, Done): plain, a little dim at rest; focused, Home's
+     * glass pill appears around it, as on every Discover screen. Its padding sits outside the words, so a caller
+     * lines it up with text above by a left margin of {@link #ACTION_PAD} pulled back.
+     */
+    TextView action(String s) {
+        TextView t = text(s, 15, R.string.font_medium, INK);
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        t.setPadding(px(ACTION_PAD), 0, px(ACTION_PAD + 2), 0);
+        focusBare(t, 1.06f);
+        return t;
+    }
+
+    static final float ACTION_PAD = 16;
+
+    /** A capsule of text that is glass, brighter while focused: for choices and filters (chips), not actions. */
     TextView capsule(String s) {
         TextView t = text(s, 14, R.string.font_medium, INK);
         t.setGravity(Gravity.CENTER);

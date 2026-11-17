@@ -299,7 +299,7 @@ final class SearchPane implements DiscoverActivity.Pane {
 
     // ---- Ask in plain words ----
 
-    /** A sentence, with Gemini set up: a capsule offering to ask it in plain words, first in the results. */
+    /** A sentence, with Gemini set up: an action offering to ask it in plain words, first in the results. */
     private void askOffer(String q) {
         if (!Discover.isSentence(q) || !net.canAsk()) return;
         LinearLayout pill = new LinearLayout(act);
@@ -313,11 +313,12 @@ final class SearchPane implements DiscoverActivity.Pane {
         tlp.leftMargin = ui.px(10);
         pill.addView(t, tlp);
         t.setMaxWidth(ui.px(640));
-        ui.focusGlass(pill, 22);
+        ui.focusBare(pill, 1.06f);   // an action, as "Watch trailer": Home's pill only while focused
         pill.setOnClickListener(v -> runAsk(q));
         pill.setNextFocusUpId(field.getId());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, ui.px(44));
         lp.bottomMargin = ui.px(24);
+        lp.leftMargin = -ui.px(16);   // the spark lines up with the headings; the pill's padding sits outside
         content.addView(pill, lp);
         firstResult = pill;
     }
