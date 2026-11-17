@@ -124,9 +124,9 @@ final class LgHome {
     private final List<View> slideViews = new ArrayList<>();
     private final List<View> slideDots = new ArrayList<>();
     private final List<LgApps.App> chips = new ArrayList<>();
-    /** Fork: the last-watched chip's artwork, decoded again only when the title changes. */
-    private String lastWatchedKey;
-    private Bitmap lastWatchedArt;
+    /** Fork: the Recent row's title artwork, per app, decoded again only when the title or its picture changes. */
+    private final Map<String, String> playedKeys = new HashMap<>();
+    private final Map<String, Bitmap> playedArt = new HashMap<>();
     private final Map<String, View> focusables = new HashMap<>();
     private final Map<String, Float> radii = new HashMap<>();
     private LinearLayout strip;
@@ -1058,14 +1058,21 @@ final class LgHome {
 
     private void wideWidget() {
         chips.clear();
-        // Fork: the first chip is the title last seen playing (MediaListener), when its app is still on Home.
-        LastPlayed played = LastPlayed.load(act);
-        LgApps.App playedApp = null;
-        if (played != null) for (LgApps.App a : apps) if (a.pkg.equals(played.pkg)) playedApp = a;
-        if (playedApp != null) chips.add(playedApp);
+        // Fork: first the titles last seen playing (MediaListener), one per app, newest first, as poster tiles;
+        // then apps opened lately, then other apps. Settings, stores, tools and add-ons never show here.
+        Map<String, LastPlayed> played = new HashMap<>();
+        for (LastPlayed p : LastPlayed.all(act)) {
+            if (chips.size() >= MAX_CHIPS || !LgApps.forRecent(p.pkg)) continue;
+            for (LgApps.App a : apps) {
+                if (a.pkg.equals(p.pkg)) {
+                    chips.add(a);
+                    played.put(a.pkg, p);
+                }
+            }
+        }
         for (LgApps.App a : LgApps.recent(apps, MAX_CHIPS)) if (chips.size() < MAX_CHIPS && !chips.contains(a)) chips.add(a);
         for (LgApps.App a : apps) {
-            if (chips.size() < MAX_CHIPS && !chips.contains(a) && !LgApps.isSystemSettings(a.pkg)) chips.add(a);
+            if (chips.size() < MAX_CHIPS && !chips.contains(a) && LgApps.forRecent(a.pkg)) chips.add(a);
         }
         chipRow = new FrameLayout(act);
         chipRow.setClipChildren(false);   // room for a focused chip's glow
@@ -1076,8 +1083,9 @@ final class LgHome {
             FrameLayout chip = new FrameLayout(act);
             chip.setClipToOutline(true);
             chip.setBackground(glass(14, false));
-            if (i == 0 && playedApp != null) {
-                lastWatchedChip(chip, a, played, cw);
+            LastPlayed p = played.get(a.pkg);
+            if (p != null) {
+                playedChip(chip, a, p, cw);
             } else {
                 View tint = new View(act);
                 tint.setBackgroundColor((a.color & 0x00FFFFFF) | 0x33000000);
@@ -1098,18 +1106,21 @@ final class LgHome {
         }
     }
 
-    /** The last-watched chip: the title's artwork under a dark fade, its app's logo and the title. OK opens the app. */
-    private void lastWatchedChip(FrameLayout chip, LgApps.App app, LastPlayed played, float cw) {
-        String key = played.pkg + "\n" + played.title + "\n" + LastPlayed.artStamp(act);
-        if (!key.equals(lastWatchedKey)) {
-            lastWatchedKey = key;
-            lastWatchedArt = LastPlayed.art(act);
+    /** A watched-title tile: the title's picture under a dark fade, its app's logo, the title and when. OK opens the app. */
+    private void playedChip(FrameLayout chip, LgApps.App app, LastPlayed played, float cw) {
+        String key = played.title + "\n" + LastPlayed.artStamp(act, played.pkg);
+        if (!key.equals(playedKeys.get(played.pkg))) {
+            playedKeys.put(played.pkg, key);
+            playedArt.remove(played.pkg);
+            Bitmap art = LastPlayed.art(act, played.pkg);
+            if (art != null) playedArt.put(played.pkg, art);
         }
-        if (lastWatchedArt != null) {
-            ImageView art = new ImageView(act);
-            art.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            art.setImageBitmap(lastWatchedArt);
-            chip.addView(art, new FrameLayout.LayoutParams(-1, -1));
+        Bitmap art = playedArt.get(played.pkg);
+        if (art != null) {
+            ImageView pic = new ImageView(act);
+            pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            pic.setImageBitmap(art);
+            chip.addView(pic, new FrameLayout.LayoutParams(-1, -1));
             View fade = new View(act);
             fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                     new int[]{0x66000000, 0x1A000000, 0xD9000000}));
@@ -1123,12 +1134,12 @@ final class LgHome {
         logo.setImageDrawable(fresh(app.glyph));
         logo.setScaleType(ImageView.ScaleType.FIT_START);
         place(chip, logo, 8, 4, 28, 28);
-        TextView kick = text(act.getString(R.string.lg_last_watched), 8, R.string.font_medium, 0xB3FFFFFF);
-        kick.setAllCaps(true);
-        kick.setLetterSpacing(0.12f);
-        kick.setGravity(Gravity.END);
-        place(chip, kick, cw - 92, 9, 82, -1);
-        place(chip, text(played.title, 12, R.string.font_medium, 0xFFFFFFFF), 12, 53, cw - 22, -1);
+        TextView title = text(played.title, 12, R.string.font_medium, 0xFFFFFFFF);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        place(chip, title, 12, 41, cw - 22, -1);
+        place(chip, text(capitalize(LastOpened.describe(act, played.when)), 10, R.string.font_regular, 0xA6FFFFFF),
+                12, 57, cw - 22, -1);
     }
 
     // ---- focus ----

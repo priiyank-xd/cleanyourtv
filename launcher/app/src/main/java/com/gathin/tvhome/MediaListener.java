@@ -2,6 +2,7 @@ package com.gathin.tvhome;
 
 import android.content.ComponentName;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
@@ -11,11 +12,17 @@ import android.os.Looper;
 import android.service.notification.NotificationListenerService;
 import android.text.TextUtils;
 
+import org.json.JSONObject;
+
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
- * Fork: notes what other apps are playing, for Home's "last watched" card (LastPlayed). It reads only media
+ * Fork: notes what other apps are playing, one title per app, for Home's Recent row (LastPlayed). It reads only media
  * sessions, never notifications. Android lists other apps' media sessions only to an enabled notification listener,
  * so it is switched on once, with the remote in Settings or over ADB:
  * cmd notification allow_listener com.gathin.tvhome/com.gathin.tvhome.MediaListener
@@ -24,6 +31,9 @@ public class MediaListener extends NotificationListenerService {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<MediaController> watched = new ArrayList<>();
     private final List<MediaController.Callback> callbacks = new ArrayList<>();
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    /** Titles already looked up on TMDB in this run, so a title with no match is not searched again and again. */
+    private final Set<String> searched = new HashSet<>();
     private MediaSessionManager sessions;
     private final MediaSessionManager.OnActiveSessionsChangedListener changed = this::watch;
 
@@ -38,6 +48,12 @@ public class MediaListener extends NotificationListenerService {
         } catch (SecurityException ignored) {
             // Access was switched off between binding and now.
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        worker.shutdownNow();
+        super.onDestroy();
     }
 
     @Override
@@ -88,11 +104,37 @@ public class MediaListener extends NotificationListenerService {
         if (art == null) art = m.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
         if (art == null) art = m.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
         // Many apps send the title first and its artwork in a later update: save the art when it first arrives.
-        if (!LastPlayed.isNew(this, pkg, title) && (art == null || LastPlayed.hasArt(this))) {
+        if (!LastPlayed.isNew(this, pkg, title) && (art == null || LastPlayed.hasArt(this, pkg))) {
             LastPlayed.touch(this, pkg, title, subtitle);
-            return;
+        } else {
+            LastPlayed.save(this, pkg, title, subtitle, art);
         }
-        LastPlayed.save(this, pkg, title, subtitle, art);
+        if (art == null && !LastPlayed.hasArt(this, pkg)) lookUp(pkg, title, subtitle);
+    }
+
+    /**
+     * A movie or series app that sent no artwork: find the title on TMDB (an exact name match only) and save its
+     * picture. Apps whose titles are not films or shows (YouTube, music) are never looked up.
+     */
+    private void lookUp(String pkg, String title, String subtitle) {
+        String token = BuildConfig.TMDB_TOKEN == null ? "" : BuildConfig.TMDB_TOKEN.trim();
+        if (token.isEmpty() || !Tmdb.hasFilmsAndShows(pkg) || !searched.add(pkg + "\n" + title)) return;
+        worker.execute(() -> {
+            for (String name : new String[]{title, subtitle}) {
+                if (TextUtils.isEmpty(name)) continue;
+                try {
+                    JSONObject answer = Tmdb.get(Tmdb.searchUrl(name), token);
+                    String path = Tmdb.pictureFor(answer, name);
+                    if (path == null) continue;
+                    byte[] bytes = Tmdb.download(Tmdb.imageUrl(path, "w780"));
+                    Bitmap bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                    if (bmp != null) LastPlayed.saveArtIfCurrent(this, pkg, title, bmp);
+                    return;
+                } catch (Exception ignored) {
+                    // Offline or no match: the tile keeps the app's colour.
+                }
+            }
+        });
     }
 
     private static String text(MediaMetadata m, String first, String second) {

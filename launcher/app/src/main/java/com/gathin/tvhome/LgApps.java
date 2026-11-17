@@ -9,6 +9,7 @@ import android.content.pm.ResolveInfo;
 import android.graphics.drawable.Drawable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -105,9 +106,20 @@ final class LgApps {
         return pkg.equals("com.android.tv.settings") || pkg.equals("com.android.settings");
     }
 
+    /** Fork: settings, stores, tools and add-ons: they stay in the band but never fill the Recent row. */
+    private static final Set<String> NOT_RECENT = new HashSet<>(Arrays.asList(
+            "com.android.vending", "com.google.android.play.games", "com.amaze.filemanager", "com.internet.tvbrowser",
+            "dev.clombardo.dnsnet", "com.gathin.btconnect", "io.github.jqssun.airplay", "com.sdmc.implayer",
+            "io.github.luyzfernando08.sleeptimer"));
+
+    /** Whether the app may appear in the Recent row: something you watch or listen to, not a tool. */
+    static boolean forRecent(String pkg) {
+        return !isSystemSettings(pkg) && !NOT_RECENT.contains(pkg) && !pkg.startsWith("io.github.maxhayim.");
+    }
+
     static List<App> recent(List<App> apps, int max) {
         List<App> out = new ArrayList<>();
-        for (App a : apps) if (a.lastOpened > 0 && !isSystemSettings(a.pkg)) out.add(a);
+        for (App a : apps) if (a.lastOpened > 0 && forRecent(a.pkg)) out.add(a);
         Collections.sort(out, (a, b) -> Long.compare(b.lastOpened, a.lastOpened));
         return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
     }

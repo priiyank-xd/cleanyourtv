@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -120,6 +121,43 @@ final class Tmdb {
 
     static String providersUrl(String kind, int id) {
         return API + kind + "/" + id + "/watch/providers";
+    }
+
+    /** Fork: apps whose playing titles are films or shows (TMDB providers), so a TMDB picture lookup makes sense. */
+    static boolean hasFilmsAndShows(String pkg) {
+        return PROVIDERS.containsKey(pkg) || pkg.equals("com.discoveryplus.tv.android");
+    }
+
+    static String searchUrl(String query) {
+        return API + "search/multi?include_adult=false&language=" + LANGUAGE + "&query=" + enc(query);
+    }
+
+    /**
+     * The picture (wide backdrop, else poster) of the first movie or series in a search answer whose name matches
+     * {@code name} exactly, ignoring case, spaces and punctuation; null when none does, so a loose match never shows
+     * the wrong poster.
+     */
+    static String pictureFor(JSONObject answer, String name) {
+        JSONArray results = answer.optJSONArray("results");
+        String want = plain(name);
+        if (results == null || want.isEmpty()) return null;
+        for (int i = 0; i < results.length(); i++) {
+            JSONObject r = results.optJSONObject(i);
+            if (r == null) continue;
+            String kind = r.optString("media_type");
+            if (!kind.equals("movie") && !kind.equals("tv")) continue;
+            String title = r.optString(kind.equals("movie") ? "title" : "name");
+            String original = r.optString(kind.equals("movie") ? "original_title" : "original_name");
+            if (!want.equals(plain(title)) && !want.equals(plain(original))) continue;
+            String pic = r.optString("backdrop_path", "");
+            if (pic.isEmpty() || pic.equals("null")) pic = r.optString("poster_path", "");
+            if (!pic.isEmpty() && !pic.equals("null")) return pic;
+        }
+        return null;
+    }
+
+    private static String plain(String s) {
+        return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
     static String imageUrl(String path, String size) {
