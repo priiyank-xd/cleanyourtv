@@ -63,7 +63,8 @@ public class HomeKeyService extends AccessibilityService {
         boolean done = muteGesture.feed(code, event.getAction(), event.getRepeatCount(), event.getEventTime());
         // Volume Up unmutes on its own, so note the state when a press begins an attempt (a key filter sees the press
         // before Android applies it), not when the attempt ends. A stale, half-finished attempt starts over here too.
-        if (volume && muteGesture.progress() == 1 && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+        // Only on the press that began it: a duplicate of that press arrives after Android has applied the first.
+        if (volume && muteGesture.started()) {
             mutedAtStart = audio.isStreamMute(android.media.AudioManager.STREAM_MUSIC);
         }
         if (!done) return;

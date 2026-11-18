@@ -15,12 +15,26 @@ final class MuteGesture {
     private static final int[] PATTERN = {KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN};
 
+    /**
+     * The same key again this soon is one press seen twice, not a second press. The Arc 5's remote (RC B080) reaches
+     * Android over Bluetooth and IR at once, so each press arrives two or three times, 15 to 135 ms apart.
+     */
+    static final long DUPLICATE_MS = 180;
+
     private int matched;
     private long firstAt, lastAt;
+    private int lastKey;
+    private long lastKeyAt;
+    private boolean started;
 
     /** How many presses of the pattern are matched so far; 0 before a press would start a new attempt. */
     int progress() {
         return matched;
+    }
+
+    /** Whether the last event fed began a new attempt (not a duplicate of the press that did). */
+    boolean started() {
+        return started;
     }
 
     /**
@@ -28,18 +42,27 @@ final class MuteGesture {
      * key-ups are ignored, and any other key or a pause too long starts over.
      */
     boolean feed(int keyCode, int action, int repeatCount, long timeMs) {
+        started = false;
         if (action != KeyEvent.ACTION_DOWN || repeatCount != 0) return false;
         if (keyCode != KeyEvent.KEYCODE_VOLUME_UP && keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
             matched = 0;
+            lastKey = 0;
             return false;
         }
+        boolean duplicate = keyCode == lastKey && timeMs - lastKeyAt < DUPLICATE_MS;
+        lastKey = keyCode;
+        lastKeyAt = timeMs;
+        if (duplicate) return false;
         if (matched > 0 && (timeMs - lastAt > GAP_MS || timeMs - firstAt > WINDOW_MS)) matched = 0;
         if (keyCode != PATTERN[matched]) {
             // A wrong key may still be the start of a new attempt.
             matched = 0;
             if (keyCode != PATTERN[0]) return false;
         }
-        if (matched == 0) firstAt = timeMs;
+        if (matched == 0) {
+            firstAt = timeMs;
+            started = true;
+        }
         lastAt = timeMs;
         matched++;
         if (matched < PATTERN.length) return false;

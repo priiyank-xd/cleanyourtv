@@ -67,6 +67,30 @@ public class MuteGestureTest {
         assertTrue(press(g, DOWN, 600));
     }
 
+    /** The Arc 5's remote, as logged on the projector: each press arrives twice (Bluetooth and IR), even three times. */
+    @Test public void pressesSeenTwiceStillMute() {
+        MuteGesture g = new MuteGesture();
+        long[] at = {89, 155, 310, 326, 509, 572};
+        int[] key = {UP, UP, DOWN, DOWN, UP, UP};
+        for (int i = 0; i < at.length; i++) assertFalse(press(g, key[i], at[i]));
+        assertTrue(press(g, DOWN, 726));
+        assertFalse(press(g, DOWN, 788));   // the same press seen again
+        MuteGesture h = new MuteGesture();
+        press(h, UP, 640); press(h, UP, 683); press(h, UP, 739);
+        press(h, DOWN, 1021); press(h, DOWN, 1073);
+        press(h, UP, 1321); press(h, UP, 1355);
+        assertTrue(press(h, DOWN, 1705));
+        assertFalse(press(h, DOWN, 1723));   // its duplicate doesn't toggle again
+    }
+
+    @Test public void onlyThePressThatBeginsAnAttemptCountsAsStarting() {
+        MuteGesture g = new MuteGesture();
+        press(g, UP, 0);
+        assertTrue(g.started());
+        press(g, UP, 60);
+        assertFalse(g.started());
+    }
+
     @Test public void aWrongPressCanBeginANewAttempt() {
         MuteGesture g = new MuteGesture();
         press(g, UP, 0); press(g, DOWN, 200);
