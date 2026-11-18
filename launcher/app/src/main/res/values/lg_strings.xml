@@ -20,6 +20,8 @@
     <string name="hub_tools" translatable="false">Tools</string>
     <string name="hub_bt_connect" translatable="false">Bluetooth Connect</string>
     <string name="hub_bt_connect_sub" translatable="false">Connect a paired speaker or headphones</string>
+    <string name="hub_headphones" translatable="false">Headphones</string>
+    <string name="hub_headphones_sub" translatable="false">Battery, where sound goes, mute when they drop</string>
     <string name="hub_brightness_sub" translatable="false">Dim below the minimum, warm night mode</string>
     <string name="hub_airplay_sub" translatable="false">Mirror an iPhone or Mac to the projector</string>
     <string name="hub_sleep_sub" translatable="false">Turn off after 15 to 120 minutes</string>

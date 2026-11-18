@@ -1305,7 +1305,7 @@ final class LgHome {
     /** Fork: the Arc 5's tool apps, kept off the app band and reached from quick settings and the Settings panel. */
     static final String BT_CONNECT = "com.gathin.btconnect", BRIGHTNESS = "io.github.maxhayim.brightness",
             AIRPLAY = "io.github.jqssun.airplay", SLEEP_TIMER = "io.github.luyzfernando08.sleeptimer",
-            DNSNET = "dev.clombardo.dnsnet";
+            DNSNET = "dev.clombardo.dnsnet", HEADPHONES = "io.github.maxhayim.headphones";
 
     /** The app's TV launch intent, or {@code fallback} when it isn't installed. */
     static Intent appOr(Context ctx, String pkg, Intent fallback) {
