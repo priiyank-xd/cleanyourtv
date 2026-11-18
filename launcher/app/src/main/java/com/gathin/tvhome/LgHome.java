@@ -1295,7 +1295,7 @@ final class LgHome {
         if (focus.startsWith("c") && n < chips.size()) { LgApps.launch(act, chips.get(n)); return; }
         if (focus.startsWith("q")) {
             if (n == 0) start(SystemSettings.intent(act, Settings.ACTION_WIFI_SETTINGS));
-            else if (n == 1) start(appOr(act, BT_CONNECT, SystemSettings.bluetoothIntent(act)));
+            else if (n == 1) start(appOr(act, HEADPHONES, SystemSettings.bluetoothIntent(act)));
             else if (n == 2) start(appOr(act, BRIGHTNESS, SystemSettings.pictureIntent(act)));
             else if (n == 3) start(appOr(act, AIRPLAY, SystemSettings.castIntent(act)));
             else start(appOr(act, SLEEP_TIMER, SystemSettings.intent(act, Settings.ACTION_SETTINGS)));
@@ -1303,7 +1303,7 @@ final class LgHome {
     }
 
     /** Fork: the Arc 5's tool apps, kept off the app band and reached from quick settings and the Settings panel. */
-    static final String BT_CONNECT = "com.gathin.btconnect", BRIGHTNESS = "io.github.maxhayim.brightness",
+    static final String BRIGHTNESS = "io.github.maxhayim.brightness",
             AIRPLAY = "io.github.jqssun.airplay", SLEEP_TIMER = "io.github.luyzfernando08.sleeptimer",
             DNSNET = "dev.clombardo.dnsnet", HEADPHONES = "io.github.maxhayim.headphones";
 

@@ -120,7 +120,7 @@ final class LgApps {
     /** Fork: settings, stores, tools and add-ons: they stay in the band but never fill the Recent row. */
     private static final Set<String> NOT_RECENT = new HashSet<>(Arrays.asList(
             "com.android.vending", "com.google.android.play.games", "com.amaze.filemanager", "com.internet.tvbrowser",
-            "dev.clombardo.dnsnet", "com.gathin.btconnect", "io.github.jqssun.airplay", "com.sdmc.implayer",
+            "dev.clombardo.dnsnet", "io.github.jqssun.airplay", "com.sdmc.implayer",
             "io.github.luyzfernando08.sleeptimer"));
 
     /** Whether the app may appear in the Recent row: something you watch or listen to, not a tool. */

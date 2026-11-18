@@ -71,7 +71,7 @@ final class Glyphs {
         put("files", "io.github.maxhayim.filescard");
         put("amaze", "com.amaze.filemanager");
         put("tldr", "ai.lumiolabs.tldr");
-        put("bluetooth", "com.gathin.btconnect");
+        put("bluetooth", "io.github.maxhayim.headphones");
         put("playgames", "com.google.android.play.games");
         put("mediaplayer", "com.sdmc.implayer");
         put("realdebrid", "com.yablio.realdebridtv");

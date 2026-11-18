@@ -125,8 +125,7 @@ public class SettingsHubActivity extends Activity {
 
         // Fork (Arc 5): the tool apps kept off Home's app band, each shown only when it is installed.
         section(list, R.string.hub_tools);
-        toolRow(list, R.drawable.ic_lg_bluetooth, R.string.hub_bt_connect, R.string.hub_bt_connect_sub, LgHome.BT_CONNECT);
-        toolRow(list, R.drawable.ic_lg_headphones, R.string.hub_headphones, R.string.hub_headphones_sub, LgHome.HEADPHONES);
+        toolRow(list, R.drawable.ic_lg_bluetooth, R.string.hub_headphones, R.string.hub_headphones_sub, LgHome.HEADPHONES);
         toolRow(list, R.drawable.ic_lg_brightness, R.string.lg_brightness, R.string.hub_brightness_sub, LgHome.BRIGHTNESS);
         toolRow(list, R.drawable.ic_lg_airplay, R.string.lg_airplay, R.string.hub_airplay_sub, LgHome.AIRPLAY);
         toolRow(list, R.drawable.ic_lg_sleep, R.string.lg_sleep, R.string.hub_sleep_sub, LgHome.SLEEP_TIMER);
