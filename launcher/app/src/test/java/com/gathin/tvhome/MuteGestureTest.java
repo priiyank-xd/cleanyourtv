@@ -94,8 +94,19 @@ public class MuteGestureTest {
     @Test public void aWrongPressCanBeginANewAttempt() {
         MuteGesture g = new MuteGesture();
         press(g, UP, 0); press(g, DOWN, 200);
-        press(g, DOWN, 400);              // breaks the pattern
+        g.feed(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.ACTION_DOWN, 0, 300);   // breaks the pattern
         press(g, UP, 600); press(g, DOWN, 800); press(g, UP, 1000);
         assertTrue(press(g, DOWN, 1200));
+    }
+
+    /** A duplicate can trail its press by 241 ms (logged 16:09 on the Arc 5), close to the next real press. */
+    @Test public void lateDuplicatesStillMute() {
+        MuteGesture g = new MuteGesture();
+        long[] at = {676, 689, 797, 1040, 1281, 1350, 1383};
+        int[] key = {UP, UP, UP, DOWN, DOWN, UP, UP};
+        for (int i = 0; i < at.length; i++) assertFalse(press(g, key[i], at[i]));
+        assertTrue(press(g, DOWN, 1660));
+        assertFalse(press(g, DOWN, 1686));
+        assertFalse(press(g, DOWN, 1742));
     }
 }

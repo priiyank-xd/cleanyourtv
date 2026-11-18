@@ -15,12 +15,6 @@ final class MuteGesture {
     private static final int[] PATTERN = {KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN};
 
-    /**
-     * The same key again this soon is one press seen twice, not a second press. The Arc 5's remote (RC B080) reaches
-     * Android over Bluetooth and IR at once, so each press arrives two or three times, 15 to 135 ms apart.
-     */
-    static final long DUPLICATE_MS = 180;
-
     private int matched;
     private long firstAt, lastAt;
     private int lastKey;
@@ -49,7 +43,10 @@ final class MuteGesture {
             lastKey = 0;
             return false;
         }
-        boolean duplicate = keyCode == lastKey && timeMs - lastKeyAt < DUPLICATE_MS;
+        // The pattern never repeats a key, so the same key again within a gap is one press seen twice: the Arc 5's
+        // remote (RC B080) reaches Android over Bluetooth and IR at once, and a press arrives two or three times, up
+        // to 250 ms apart, too close to the gap between real presses to tell them apart by time.
+        boolean duplicate = keyCode == lastKey && timeMs - lastKeyAt <= GAP_MS;
         lastKey = keyCode;
         lastKeyAt = timeMs;
         if (duplicate) return false;
