@@ -6,6 +6,13 @@ like a trace (process, thread, thread_track, slice, actual_frame_timeline_slice)
 numbers by hand. A test that needs the real engine runs only when the optional perfetto package is
 installed and CLEANYOURTV_TRACE names a trace recorded with tools/trace.py.
 
+Every trace `fake_trace()` builds stays referenced until the module's tests end and is closed there, as
+`tests/test_flamechart.py` does: an unreferenced connection is collected at a random point, and Python
+3.13 reports that as `ResourceWarning: unclosed database` on stderr - `-W always::ResourceWarning` named
+16 of them for this module, against none for either flamechart module. Twelve of the cases here close
+their own trace through `addCleanup`, and sqlite3 accepts a second `close()`, so the module's teardown
+does not have to ask which ones are left. `TracesAreClosedTest` holds both halves.
+
 Run from the repository root: python3 -m unittest discover -s tests -v
 """
 import contextlib
@@ -28,6 +35,18 @@ spec.loader.exec_module(report)
 
 PKG = "com.gathin.tvhome"
 MS = 1_000_000
+
+# Every trace fake_trace() builds stays referenced until the module ends and is closed in tearDownModule(),
+# as tests/test_flamechart.py does. An unreferenced connection is collected at a random point and Python
+# 3.13 reports that as "ResourceWarning: unclosed database" on stderr - 16 of them for this module before
+# this registry existed. Twelve cases close their own trace through addCleanup; sqlite3 accepts a second
+# close(), so the teardown below does not ask which ones those were.
+_FAKE_DBS = []
+
+
+def tearDownModule():
+    while _FAKE_DBS:
+        _FAKE_DBS.pop().close()
 
 
 def fake_trace(cold=False, frames=(), draws=(), missed=1, gpu=()):
@@ -62,6 +81,7 @@ def fake_trace(cold=False, frames=(), draws=(), missed=1, gpu=()):
         db.execute("insert into actual_frame_timeline_slice values (?, ?, 2, ?)", ((1060 + 20 * i) * MS, dur * MS, jank))
     q = lambda sql: [dict(r) for r in db.execute(sql)]
     q.close = db.close
+    _FAKE_DBS.append(db)
     return q
 
 
@@ -529,6 +549,16 @@ class FilesTest(unittest.TestCase):
             self.assertEqual([os.path.basename(p) for p in report.expand([tmp])],
                              ["home-1.pftrace", "home-2.pftrace", "home-10.pftrace"])
 
+    def test_a_folder_name_with_glob_characters_is_read_as_itself(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "tr[1]").mkdir()
+            Path(tmp, "tr[1]", "home-1.pftrace").write_bytes(b"")
+            folder = os.path.join(tmp, "tr[1]")
+            self.assertEqual([folder], [os.path.dirname(p) for p in report.expand([folder])])
+            Path(tmp, "tr1").mkdir()
+            Path(tmp, "tr1", "other-1.pftrace").write_bytes(b"")
+            self.assertEqual([os.path.join(folder, "home-1.pftrace")], report.expand([folder]))
+
     def test_scenario_comes_from_the_sidecar_then_the_name(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp, "run-1.pftrace")
@@ -786,6 +816,32 @@ class RealTraceTest(unittest.TestCase):
         finally:
             close()
         self.assertIn("frames", metrics)
+
+
+class TracesAreClosedTest(unittest.TestCase):
+    """The module's own teardown closes the traces its cases did not.
+
+    `fake_trace()` keeps every connection it opens so `tearDownModule()` can close them together, which is
+    what keeps Python 3.13's `ResourceWarning: unclosed database` off this module's stderr. These cases pin
+    the two halves of that: a trace a case leaves alone is closed at the end, and one a case already closed
+    is closed again without an exception - which is why the teardown needs no record of who closed what.
+    Calling `tearDownModule()` from inside a case is safe: a case uses its trace only in its own body, and the
+    twelve that close theirs have done so before their cleanup ran.
+    """
+
+    def test_a_trace_no_case_closed_is_closed_when_the_module_ends(self):
+        started = len(_FAKE_DBS)
+        q = fake_trace()
+        self.assertEqual(len(_FAKE_DBS), started + 1, "fake_trace() did not keep its trace for the module")
+        tearDownModule()
+        self.assertEqual(_FAKE_DBS, [], "tearDownModule() left a trace open")
+        with self.assertRaises(sqlite3.ProgrammingError):
+            q("select count(*) from process")
+
+    def test_a_trace_the_case_closed_itself_is_closed_again_without_a_word(self):
+        q = fake_trace()
+        q.close()
+        tearDownModule()        # the same call the module makes at the end, over one closed trace
 
 
 if __name__ == "__main__":

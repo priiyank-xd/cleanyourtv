@@ -32,6 +32,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+import warnings
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("cyt_screendiff", ROOT / "tools" / "screendiff.py")
@@ -131,6 +132,22 @@ class CompareTest(unittest.TestCase):
         original = before.tobytes(), after.tobytes()
         self.assertEqual(screendiff.compare(before, after, [(0, 0, 4, 4)], 8), (1, (5, 1, 6, 2), 9))
         self.assertEqual((before.tobytes(), after.tobytes()), original)
+
+    def test_the_largest_difference_is_read_without_reading_every_pixel(self):
+        # Pillow 13 - the version tools/requirements-photos.txt pins - deprecates Image.getdata and Pillow 14
+        # removes it, and this number was read with max(...getdata()): a DeprecationWarning on every run
+        # under that pin, and an AttributeError after the comparison was done once Pillow removes it.
+        before = self.Image.new("RGB", (8, 4), "black")
+        after = before.copy()
+        after.putpixel((5, 1), (0, 40, 0))
+        with warnings.catch_warnings(record=True) as seen:
+            warnings.simplefilter("always")
+            result = screendiff.compare(before, after, [(0, 0, 4, 4)], 8)
+        self.assertEqual(result, (1, (5, 1, 6, 2), 40),
+                         "the largest difference is still the largest channel difference")
+        self.assertEqual([str(w.message) for w in seen if "getdata" in str(w.message)], [],
+                         "the largest difference is read with Image.getdata, which Pillow 13 deprecates and "
+                         "Pillow 14 removes: read the peak with getextrema()")
 
     def test_compression_noise_under_the_threshold_is_ignored(self):
         a, b = self.shot("a.png"), self.shot("b.png", noise=3)
@@ -281,6 +298,21 @@ class CompareTest(unittest.TestCase):
                 self.assertIn("Nothing was compared", err.getvalue())
                 self.assertNotIn("Traceback", err.getvalue())
                 self.assertEqual(out.getvalue(), "")
+
+    def test_an_out_name_the_console_cannot_encode_is_printed_with_replacement_characters(self):
+        a, b = self.shot("a.png"), self.shot("b.png")
+        out = Path(self.tmp.name) / ("sd_" + chr(0x5199) + ".png")
+        raw = io.BytesIO()
+        console = io.TextIOWrapper(raw, encoding="cp1252", newline="")
+        real_stdout = sys.stdout
+        self.addCleanup(setattr, sys, "stdout", real_stdout)
+        sys.stdout = console
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            code = screendiff.main([a, b, "--out", str(out)])
+        console.flush()
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertTrue(out.is_file())
+        self.assertIn("sd_?.png: written", raw.getvalue().decode("cp1252"))
 
     def test_a_pair_that_reads_is_still_compared(self):
         """The decode is not allowed to swallow the comparison it guards."""

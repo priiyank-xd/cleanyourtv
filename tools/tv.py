@@ -12,14 +12,16 @@ Set TV_HOST to the TV's IP (or IP:port). Usage:
     tv.py --reboot                     return once the reboot request is accepted; the TV may still be restarting
     tv.py --help                       this text; needs neither the venv nor a TV
 
-Exit status: 0 the command ran (the TV's own answer is in its output), 1 the screenshot came back
-empty or failed, a pull the TV did not send (the local file is left as it was), a push the TV refused
-(what it said, and that the file there may be incomplete), or a command's answer was lost when the TV
-dropped the connection,
+Exit status: 0 the command ran (the TV's own answer is in its output), or the reader stopped reading that
+answer before it was all out (a pager, `head`: the run printed as far as they read, which is not a
+failure), 1 the screenshot came back empty or failed, a pull the TV did not send (the local file is left
+as it was), a push the TV refused (what it said, and that the file there may be incomplete), or a
+command's answer was lost when the TV dropped the connection,
 2 it was refused before anything ran on the TV - a flag it does not have, one of its own with the wrong
 number of words, a local path that cannot be used, a port it could not open, or a TV_HOST that is a URL
 or a path instead of the TV's address. A flag and its count are
 judged before TV_HOST is read, so a typo names the usage instead of the TV's address.
+Batch input must be UTF-8 without NUL bytes; the whole list is checked before connecting.
 
 Set TV_ADB_BINARY to the Google adb executable to use an already connected, paired transport
 (including encrypted Wireless debugging). See tools/native-adb.md.
@@ -33,11 +35,36 @@ import subprocess
 import sys
 import time
 
+
+def stopped_reading():
+    """What a run answers when the reader closed the pipe before the answer was all out.
+
+    `tv.py <command> | head` or `| less` quits at the first screen, and the answer here is the TV's own
+    output, which for dumpsys or logcat is longer than the pipe the two share: the write then fails with
+    BrokenPipeError, which used to leave the reader a traceback and exit 1 - the status this docstring
+    keeps for a command whose answer was lost, or a screenshot or push that failed, none of which
+    happened. The command had already run on the TV and its answer was printed as far as the reader read,
+    so this is the 0 the docstring gives a command that ran.
+
+    stdout is pointed at /dev/null before returning, because the interpreter flushes it again at exit and
+    would print "Exception ignored in: ... BrokenPipeError" onto the stderr of a run that went fine.
+    """
+    try:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    except (AttributeError, OSError, ValueError):
+        pass
+    return 0
+
+
 # -h/--help before the adb_shell imports and before TV_HOST is read: the usage is the first thing a
 # reader types at a script they do not know, and it needs neither the venv nor a TV. The TV_HOST check
 # below exits at import time, so a flag handled after it could never print anything but that error.
 if sys.argv[1:2] and sys.argv[1] in ("-h", "--help"):
-    print((__doc__ or "").strip())
+    try:
+        print((__doc__ or "").strip())
+        sys.stdout.flush()
+    except BrokenPipeError:
+        sys.exit(stopped_reading())
     sys.exit(0)
 
 USAGE = """usage:
@@ -753,6 +780,20 @@ def push(dev, local, remote):
 
 
 def main():
+    # A reader who closed the pipe is not a failed command: _run answers the status the work deserves, and
+    # this is the one place that turns the reader going away into the 0 stopped_reading() explains. The
+    # flush is here because a short answer stays in the buffer until the interpreter's own last flush,
+    # where the same BrokenPipeError arrives as "Exception ignored in: ... BrokenPipeError" and status 120
+    # instead of a status this docstring defines.
+    try:
+        code = _run()
+        sys.stdout.flush()
+    except BrokenPipeError:
+        return stopped_reading()
+    return code
+
+
+def _run():
     args = sys.argv[1:]
     check_arity(args)
     batch_lines = None
@@ -761,7 +802,7 @@ def main():
         # stopping it half way. utf-8-sig drops the BOM Windows PowerShell may prepend to piped stdin.
         raw = sys.stdin.buffer.read()
         try:
-            batch_lines = io.StringIO(raw.decode("utf-8-sig"), newline=None)
+            text = raw.decode("utf-8-sig")
         except UnicodeDecodeError as e:
             # e.start counts from after a BOM; a lone CR ends a line too, as it does in the loop below.
             head = raw[:e.start + (3 if raw.startswith(b"\xef\xbb\xbf") else 0)]
@@ -769,6 +810,15 @@ def main():
             print(f"--batch: line {bad_line} of the list is not UTF-8; nothing was sent to the TV. "
                   f"Save the file as UTF-8 and run it again.", file=sys.stderr)
             return 2
+        # NUL is valid UTF-8 but cannot be passed as a command argument to native ADB. In particular,
+        # BOM-less UTF-16 made from ASCII commands decodes as UTF-8 with NULs between the letters.
+        if "\0" in text:
+            head = text.split("\0", 1)[0]
+            bad_line = head.replace("\r\n", "\n").replace("\r", "\n").count("\n") + 1
+            print(f"--batch: line {bad_line} of the list contains a NUL byte; nothing was sent to the TV. "
+                  "Check the file encoding and save it as UTF-8 without NUL bytes.", file=sys.stderr)
+            return 2
+        batch_lines = io.StringIO(text, newline=None)
     try:
         dev = connect()
     except Exception as e:

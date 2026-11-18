@@ -93,6 +93,22 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   listens for ADB there`, a set that cannot be reached prints `could not reach`, and
   `tools/adb-closed.py <tv ip>` answers it in its exit status - 0 the TV itself refused, 1 the port is
   open, 2 it could not tell.
+- **Debugging is off, so the closing check should say "closed", but it answers 2 again and again: the
+  set drops packets to closed ports instead of refusing them.** Seen on a [Philips 58PUS7304/12,
+  TPM191E (`PH9M_EA_5599`), Android TV 12,
+  `STT2.230526.001`](https://github.com/Gathin23/cleanyourtv/issues/3890) on Ethernet: USB debugging
+  off, authorisations revoked, `adb_wifi_enabled` 0, and that firmware has no Network or Wireless
+  debugging entry either. `tools/adb-closed.py <tv ip>` answered `could not check <tv ip>:5555: it did
+  not answer in 3 s` before and after a reboot and from an ordinary terminal, and ports 1 and 5556
+  timed out the same way, while 1925 accepted a connection in the same second - so the TV was awake
+  and reachable, and the silence was the set's own behaviour, not the network, the router or a VPN.
+  `adb connect <tv ip>:5555` gave `WSAETIMEDOUT` (10060) as well, and 5555 had accepted at once while
+  debugging was still on. On a board like this the closing step cannot reach "closed" by the letter of
+  the rule, and a timeout says nothing either way, so read it as unproven rather than as still open:
+  say that when you hand the TV back instead of reporting the port as confirmed closed, leave
+  debugging off, and check once more after the reboot. The one thing worth reading in that state is a
+  port that is known to be open on that board answering while 5555 does not - on a Philips that is 1925
+  (or 1926), the JointSpace API `tools/philips-api.py` reads.
 - **A cable to the computer gives no device in `adb devices`**: a TV's USB-A ports are usually host
   ports, for a drive, a keyboard or an Ethernet adapter, and the cable route in the bullet above needs
   one that carries ADB device mode instead - the exception, as on the Xiaomi boxes below. On the GX655
@@ -136,7 +152,10 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   ping-discovery probe fail outright ("Network is down", SO_ERROR 50) before it scans anything;
   `nmap -sT -Pn` (a plain TCP connect scan, no ping, no raw sockets) or the Python loop above still
   works there. Every script here honours `TV_PORT`, and
-  the closing check is `tools/adb-closed.py <tv ip> <port>`.
+  the closing check is `tools/adb-closed.py <tv ip> <port>`. Not every port that answers is ADB: a
+  Philips keeps its JointSpace API open on 1926, and 1925 on older sets, whatever the debugging toggles
+  say (`tools/philips-api.py` reads the API there), so `tools/adb-closed.py <tv ip> 1925` reports that
+  port as open, not as network ADB - the tool says which port it checked, and 5555 is the one to close.
 - **Close port 5555 when you're done**: plaintext, and a shell for anyone on the LAN when `ro.adb.secure=0`, or when it is unset on a debug build or Android 4.4 (`tools/disable.sh` warns about both). Steps in the README FAQ.
 - **The TV sits on a separate VLAN or IoT network** and `tools/tv.py` times out although debugging
   is on: the router keeps the computer from reaching it. Add a temporary firewall rule from your
@@ -612,6 +631,26 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   test app does not count as something else: on a Xiaomi Mi TV 4A
   `com.duokan.factorytest/.FactoryLauncher` answers HOME, so the guard leaves it out, along with any
   package named `*factorytest*`, `*factory_test*` or `*factorymode*`.
+- **The install stops at `Home currently resolves to '<package>', which is not a stock launcher this
+  script knows`**, seen on an Allwinner-based "Z1 4K" (Android 11,
+  [#3471](https://github.com/Gathin23/cleanyourtv/issues/3471)). `launcher/build-and-install.sh` asks
+  the TV which app owns Home and turns off only one of the four it recognises (README, "How the
+  scripts protect Home"), because the answer can also be Android's chooser, a setup wizard, or
+  another launcher, and none of those should be disabled by accident. Two answers turn up in
+  practice: a vendor setup stub that still owns Home, `com.softwinner.provision` on that box, and
+  Google TV's `com.google.android.tungsten.setupwraith`, which the script's own message names and
+  which answers HOME ahead of a launcher that is not Home yet. Finish or skip the TV's own setup so
+  the stub stops answering HOME, list the candidates with
+  `tools/tv.py 'cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME'`,
+  then run the installer again naming the package it should turn off:
+  `STOCK_LAUNCHER=com.google.android.tvlauncher launcher/build-and-install.sh` (`-StockLauncher` with
+  the `.ps1`), or `STOCK_LAUNCHER=none` to leave every launcher on, which keeps the stock launcher as
+  Home (`stock_home_redirect`). A wrong guess is recoverable: after the install the script reads where
+  Home ended up and enables the package it was told to disable when the new launcher is not Home,
+  leaving those commands in a `cleanyourtv-handover-<address>.txt` when it cannot confirm the handover
+  came back. Nothing here needs the wizard disabled: the install only needs Home answered by a
+  launcher, and a list that carries a `setupwraith` line is applied with that line skipped while the
+  saved Wi-Fi network belongs to it (`FORCE_SETUPWRAITH=1` overrides on Ethernet).
 - **The TV no longer boots after a list that disabled Android's core packages** (original Mi TV
   Stick, [#884](https://github.com/Gathin23/cleanyourtv/issues/884)). An agent's list took
   `com.google.android.permissioncontroller`, `com.google.android.packageinstaller`,
@@ -626,6 +665,14 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   middleware: `com.cltv.mal`, `com.mediatek.tis`, `com.mediatek.tv.service` and
   `com.mediatek.tv.agent` (the bullet below). The three tools say "core Android or TV middleware
   packages" in that message, so a run that refuses one of the four reads the same way as this one.
+  Android's sdk sandbox is one package that reads like bloat and is not: an AOSP build ships
+  `com.android.sdksandbox`, a Google GMS image `com.google.android.sdksandbox` (`SdkSandboxGoogle.apk`).
+  Android will not finish booting without exactly one of them and says so in logcat —
+  `java.lang.RuntimeException: There should exactly one sdk sandbox package; found 0` from
+  `PackageManagerService.getRequiredSdkSandboxPackageName` — so a list that disables either name leaves
+  the set on the boot animation, with nothing on screen saying why
+  ([#3881](https://github.com/Gathin23/cleanyourtv/issues/3881), on the Android TV 16 / API 36 emulator
+  image). Read a list for both names before applying it.
   If a set is already stuck and still answers ADB, `pm enable` each of those packages and reboot;
   if ADB is gone too, a factory reset from the recovery menu is usually the only way back.
 - **The TV restarts in a loop after a debloat**, seen once, on a Haier H50H5F (Google TV 14,
@@ -755,6 +802,31 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   MOKA `R4_GTV`, Google TV 14): the firmware re-enables setupwraith at every cold boot and its
   `.RecoveryActivity` takes Home. `logcat | grep RecoveryActivity` shows it starting several times a
   second. Re-enable launcherx as above. [Notes](devices/acer-r4g.md).
+- **The TV comes back on the setup wizard, then goes black after the language choice**, seen on a
+  TCL 55DC760 (product "Percee TV", `tcl_eu`, `mt5891`, Android TV 8.0,
+  `V8-T658T01-LF1V602` / `OTT1.180130.001`, the same platform as
+  [`tcl-50dp660`](../examples/tcl-50dp660/debloat.txt),
+  [#4071](https://github.com/Gathin23/cleanyourtv/issues/4071)). A list based on that folder's had
+  run for a week and through one control reboot, with `com.google.android.tvlauncher`,
+  `com.tcl.partnercustomizer`, `android.autoinstalls.config.tcl.device` and two of the three
+  PERSISTENT packages disabled and `com.gathin.tvhome` Home, when a spontaneous reboot landed on
+  the first-run wizard: the language choice works, and then the screen is black with only power
+  working, on every power cycle, and 5555 refuses. Nothing is bricked. With the stock launcher
+  disabled the wizard has no Home to hand over to, so it finishes into nothing, and
+  `tools/restore.sh` cannot run because `adb_enabled` is 0 again. The reading that fits all three
+  symptoms is Android's RescueParty, whose escalation resets saved settings to their defaults
+  before it offers a wipe: `user_setup_complete` and `adb_enabled` back to 0, the disabled packages
+  untouched. No log survived the recovery, so the cause is unproven, but this build carries
+  RescueParty (`getprop sys.rescue_boot_count` answered 1 on the reflashed set). No command reaches
+  a set in that state: the recovery menu's factory data reset turns every disabled package back on,
+  and on this platform the full firmware over USB does the same and re-provisions the vendor data
+  (step 3 of the NVM-reset sequence in [its notes](devices/tcl-50dp660.txt)). To avoid it on this
+  board, keep the stock launcher: the same unit rebuilt the list with
+  `com.google.android.tvlauncher`, `com.tcl.partnercustomizer`,
+  `android.autoinstalls.config.tcl.device` and all three PERSISTENT packages left enabled, reached
+  Home through `stock_home_redirect` with the key helper filtering Home presses and
+  `home_long_press_home`, and has come through three control reboots with `user_setup_complete`
+  and `adb_enabled` still 1.
 - **Black screen at every boot after the launcher change, LED on, remote dead** (Vision
   2024VISION43STV, CVTE, Android 13: [its list](../examples/vision-2024vision43stv/debloat.txt) has the
   details). With file-based encryption (`getprop ro.crypto.type` says `file`) Android starts Home before
@@ -792,8 +864,22 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   minutes right after power-on and run `pm enable com.cvte.tv.launcher.space` and
   `settings put secure enabled_accessibility_services ""` if it answers (a phone hotspot with the old
   network's name and password stands in for a missing router); wipe the cache partition from the recovery
-  menu. A factory reset also works but erases everything, so it comes last. The prompt now keeps the stock
-  launcher enabled on CVTE boards without a tested list.
+  menu. A factory reset also works but erases everything, so it comes last.
+  The same state came one step earlier on a NOVA 32" (CVTE `Hi3751V350`, Android 14, build
+  `20241015_034630`): `com.cvte.tv.launcher.space` was disabled and FLauncher
+  (`me.efesser.flauncher`) set as Home, and a power cut landed during the reboot that would have
+  applied the two. The panel stays on the animated `WISDOM SHARE smart cloud tv` logo with the
+  network never coming up, so the `adb connect` above answers nothing at all, and the combinations
+  the report tried - Power held 30 s, SOURCE and MENU on the remote, Power together with the
+  remote's Power, F12/F2/Del/Esc, Shift or Ctrl held from power-on - all left it there. No pinhole
+  RESET or SERVICE button is on the set either, and Ctrl+Alt+Del on a USB keyboard reboots it, which
+  is how the kernel and USB input were shown to be alive. Whether the cut finished a boot that would
+  have succeeded, the report cannot say. No recovery combination for a `Hi3751V350` with a single
+  power button has been posted ([#2516](https://github.com/Gathin23/cleanyourtv/issues/2516)), and
+  the factory menu that session had enabled ADB from - `MENU`, then `1147`, then `DEBUG`, as
+  [`examples/sankey-smart-tv-hi3751v350/README.md`](../examples/sankey-smart-tv-hi3751v350/README.md)
+  has it on the same SoC - is drawn by the running TV, so it is no way back in either.
+  The prompt therefore keeps the stock launcher enabled on CVTE boards without a tested list.
 - **Accounts & profiles is empty after the stock launcher is disabled** (TCL 75C845X2, `G08_4K_GB`,
   Google TV 14, [#304](https://github.com/Gathin23/cleanyourtv/discussions/304)). The accounts are still
   there (`dumpsys account` lists them); the page lives in `com.google.android.apps.tv.launcherx`, and while
@@ -1163,6 +1249,27 @@ Things that bit us or contributors, so they don't bite you. Commands use `tools/
   Live TV's settings menu did. Details in
   [the MOOQ0 note](devices/xiaomi-mitv-mooq0-android11.md#channel-updown-lands-two-channels-on-hbbtv-spanish-unit-build-8835).
 
+- **AirPlay never shows up on iPhones and Macs, though AirPlay is installed and running** (TCL Smart TV Pro,
+  `G08_4K_US`, Google TV 14, `UTT2.250416.001 AU14`). The set had no Apple AirPlay key: `logcat` repeats
+  `FAIRPLAY_CA: ... Failed to call MTTZ_MFI_CopyCertFromTEE()` every few seconds and
+  `ProxyBootupReceiver: FairplayKey status = false`, and `_airplay._tcp` is not advertised. It is not the debloat:
+  re-enabling every disabled package and rebooting changed nothing. Opening Settings > System > AirPlay and HomeKit
+  Settings > Apple AirPlay and HomeKit makes `com.tcl.airplay2` fetch the key from TCL and write it into the TEE
+  (`AirPlay_UpdateCert` in `logcat`; SELinux denials on `/dev/tee0` are logged during the write, but it succeeds).
+  The TV then advertises AirPlay, and the key stays through reboots, with `com.tcl.ttvs` disabled too. If AirPlay
+  disappears after a factory reset, open that page again.
+- **An app's server on the TV stops answering while the TV sleeps** (same set). Android 14's Low Power Standby
+  cuts the network for every app that is not allow-listed while the screen is off: `dumpsys netpolicy` shows
+  `blocked=LOW_POWER_STANDBY` for the app's uid, though the process is alive and still listening. TCL's Settings >
+  System > Power & Energy > Energy Modes > Increased ("Always connected") does not change that:
+  `low_power_standby_enabled` stays 1, and the firmware sets it back to 1 at every boot. Apps may not read or write
+  it on Android 12 and later; only the system and the shell can (`tools/tv.py 'settings put global
+  low_power_standby_enabled 0'`, again after each boot). It keeps more of the TV awake in standby.
+- **Wireless debugging shows "IP address & port: unavailable" after a reboot** (same set; the Q7C notes in
+  `examples/tcl-q7c-google-tv` saw it too). It happens when Wireless debugging is switched on before Wi-Fi is up,
+  as at boot: the TLS server never binds and `adb mdns services` lists no `_adb-tls-connect._tcp`. Switching it
+  off and on once Wi-Fi is connected brings the address back. Switch Wireless debugging off again when you are done.
+
 ## Accessibility helper enabled but the remote button does nothing
 
 The optional `HomeKeyService` and `InputKeyService` only filter remote keys once Android has bound to
@@ -1254,7 +1361,9 @@ turned off in Settings stays off.
   `INPUT_KEY_SERVICE=1` and press the real button.
   A press that `logcat` reports as `KEY_UNKNOWN` or `KEY_PROGRAM` cannot be matched by keycode at all,
   because every unmapped button shares those codes: use the Linux scancode from
-  `tools/tv.py 'getevent -lt'` in `settings_key_scancodes` and install with `HOME_KEY_SERVICE=1`
+  `tools/tv.py 'getevent -t'` in `settings_key_scancodes` - the hex number after `0001` on the press's
+  line, in decimal (`00f0` is 240), since `-l` prints the key's name in place of that number - and
+  install with `HOME_KEY_SERVICE=1`
   (an RC-36 remote sends its gear on scancode 240 and its notifications button on 362 that way; see
   [the FPD CG50-C3 note](devices/fpd-cg50-c3.md)).
   Not every set answers those two routes, though ([#853](https://github.com/Gathin23/cleanyourtv/issues/853),
@@ -1279,7 +1388,7 @@ turned off in Settings stays off.
   from the shell, so nothing there said which keycode it becomes. `139` in `settings_key_keycodes` did nothing (the report
   took it for `KEYCODE_F8`, which is `138`; `138` was not tried); `66`, the `input-event-codes.h` number for `KEY_F8`, in
   `settings_key_scancodes` opened the launcher's panel with `settings_key_panel`. So read both numbers
-  off one `getevent -lt` press and try the `EV_KEY` one when the `MSC_SCAN` one matches nothing. That
+  off one `getevent -t` press and try the `EV_KEY` one when the `MSC_SCAN` one matches nothing. That
   board also brings the stock launcher back within minutes of `pm disable-user` (the
   `com.xgimi.xrmservice` bullet above), and while it is on, the gear and Home open Google TV.
 - **All vendor buttons die at once** and `logcat` says `GLOBAL_BUTTON ... process is bad`: the
@@ -1290,8 +1399,8 @@ turned off in Settings stays off.
   button makes OEM broadcast receivers (such as Xiaomi's `com.xiaomi.android.tvsetup.partnercustomizer/.GlobalKeyReceiver`)
   launch a market intent to install the missing package, or crash repeatedly.
   To remap it cleanly, put its hardware scancode in `app_keys`: `"scan:<scancode>:<package>"` (e.g.
-  `"scan:399:org.smarttube.stable"` on the Xiaomi Mi Box S, read from `getevent -lt`) and rebuild with
-  `INPUT_KEY_SERVICE=1`.
+  `"scan:399:org.smarttube.stable"` on the Xiaomi Mi Box S, the hex number after `0001` on a
+  `getevent -t` press in decimal: `018f` is 399) and rebuild with `INPUT_KEY_SERVICE=1`.
   **Use the scancode form (`scan:<scancode>`) rather than a raw keycode (`191`):** generic button keycodes
   like `KEYCODE_BUTTON_4` (191) may be shared with other buttons on some remotes/key layouts, so mapping by keycode
   can unintentionally hijack other buttons.
@@ -1310,8 +1419,8 @@ turned off in Settings stays off.
   entry should put it back (read from the launcher's code, not yet tried on a set), because a `scan:` entry is
   answered before the settings branch in
   `HomeKeyService.onKeyEvent`: `"scan:<scancode>:com.sony.dtv.smartui/.settings.SmartSettingsActivity"` in
-  `config.xml`, or in a theme's `app_keys` (find `<scancode>` with `getevent -lt` while pressing the button,
-  as the `scan:` bullet above does for a Sony remote). A keycode entry, `"176:..."` (`KEYCODE_SETTINGS`), is
+  `config.xml`, or in a theme's `app_keys` (find `<scancode>` with `getevent -t` while pressing the button,
+  in decimal, as the `scan:` bullet above says). A keycode entry, `"176:..."` (`KEYCODE_SETTINGS`), is
   also answered before the settings branch, when it has a tap target: a `hold:176:...` entry alone leaves the tap
   to Settings, and a button listed in `settings_key_scancodes` stays Settings (read from the launcher's code, not
   yet tried on a set).
@@ -1893,6 +2002,52 @@ So when it happens, unplug the soundbar from the mains for about ten seconds; th
 two messages from colliding, the Switch 2's option to turn the TV on can be switched off and the TV turned on with
 its own remote first. That avoidance comes from one capture, and no TAB5305 firmware fix was found. Not checked:
 other soundbars and consoles, and other TV boards.
+
+## Starting a Shield or a console does not turn the TV on (TCL)
+
+The TV stays off when a device on HDMI starts, even with T-Link (HDMI-CEC) on and the device set to turn the TV
+on. Once the TV is on, it still switches to that device's input. Seen on a TCL G08 ("Smart TV Pro", Google TV 14,
+`UTT2.250416.001`) with an NVIDIA Shield on HDMI 1 and a Steam Machine on HDMI 2, before and after the debloat.
+The TV hears the request and refuses it. `<Feature Abort>` here is the TV answering "refused", and
+`tv_wake_on_one_touch_play` reads `0`, which is this firmware's default:
+
+```sh
+tools/tv.py 'dumpsys hdmi_control' | grep -E "tv_wake_on_one_touch_play|Text View On|Image View On|Feature Abort" | tail -10
+#   tv_wake_on_one_touch_play (int): 0 (default: 0) [modifiable]
+#   [R] ... message=<Text View On> 40:0D
+#   [S] ... message=<Feature Abort> 04:00:0D:04 (ACK)
+```
+
+Turning it on is one setting, and it survives a restart:
+
+```sh
+tools/tv.py 'cmd hdmi_control cec_setting set tv_wake_on_one_touch_play 1'
+```
+
+This writes Android's own setting, `hdmi_control_auto_wakeup_enabled`. TCL also keeps a global setting of its own
+with the same name, `tv_wake_on_one_touch_play`, which still reads `0` afterwards. The T-Link menu shows every
+option, TV auto power on included, as on both before and after the change, so the menu does not reveal this
+setting. Nothing CEC-related was disabled; CEC on this set runs in `system_server` (`TclHdmiControlService`).
+To undo it, set it back to `0`. Three things came up on the same set once the TV was allowed to wake:
+
+- **The TV turns off, and every device sleeps, the moment the Shield is woken with its remote while the TV is
+  already on.** The Shield remote's IR control sends the TV's IR power code whenever a button press wakes the
+  Shield, Back included. The TV is already on, so the code toggles it off, and the TV then sends `<Standby>` to
+  everything. The log shows `powerPress ... Going to sleep due to power_button` half a second before the Shield's
+  `<Text View On>`. `getevent -lt` shows `KEY_POWER` arriving on `MTK Smart TV IR Receiver`, not on the TCL
+  Bluetooth remote. To fix it, turn off IR control in the Shield's remote settings. CEC turns the TV on and switches
+  the input without it.
+- **A console that wakes itself a few seconds after going to sleep now turns the TV back on each time.** The CEC
+  history shows the console sending `<Standby>`, then 5 to 30 seconds later announcing itself again with
+  `<Image View On>`, with no message from the TV in between. Before the change the TV refused that message, so
+  the loop went unnoticed. On the Steam Machine it was a SteamOS bug, fixed by an update. It is not a TV setting.
+- **`tv_send_standby_on_sleep 0` is not a way to stop the TV sleeping its devices.** On this firmware it also
+  makes the TV refuse an incoming `<Standby>` (`<Feature Abort> 08:00:36:00`), so the device going to sleep no
+  longer turns the TV off. Leave it at `1`.
+
+With these in place, a device that starts while another is on screen takes over the input, and the TV sends the
+first device `<Standby>` itself. Not checked: other TCL boards, and whether the Shield turns the TV off when it
+sleeps.
 
 ## Moonlight: two controllers both drive player 1, or a DualSense button opens the exit prompt
 
