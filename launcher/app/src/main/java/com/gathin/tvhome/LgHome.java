@@ -79,6 +79,9 @@ final class LgHome {
     private FrameLayout bgLayer;
     private Bitmap wallpaper;
     private List<LgApps.App> apps = new ArrayList<>();
+    /** Fork: the bottom row's apps, taken out of {@link #apps} (the band). */
+    private List<LgApps.App> rowApps = new ArrayList<>();
+    private final List<Integer> rowKinds = new ArrayList<>();
     /** One page of the feature card: an app (last opened or a favourite) or a trending title. */
     private static final class Slide {
         final LgApps.App app;
@@ -124,9 +127,6 @@ final class LgHome {
     private final List<View> slideViews = new ArrayList<>();
     private final List<View> slideDots = new ArrayList<>();
     private final List<LgApps.App> chips = new ArrayList<>();
-    /** Fork: the Recent row's title artwork, per app, decoded again only when the title or its picture changes. */
-    private final Map<String, String> playedKeys = new HashMap<>();
-    private final Map<String, Bitmap> playedArt = new HashMap<>();
     private final Map<String, View> focusables = new HashMap<>();
     private final Map<String, Float> radii = new HashMap<>();
     private LinearLayout strip;
@@ -293,6 +293,7 @@ final class LgHome {
             return true;
         }
         if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+        // Copies of one press from the remote's second link are dropped before this, in LauncherApp.
         if (newOpen) {   // peek mode: Left/Right page through the titles; Up/Down do nothing
             if (dir == LgNav.LEFT || dir == LgNav.RIGHT) showNew(newIndex + (dir == LgNav.LEFT ? -1 : 1));
             return true;
@@ -479,6 +480,7 @@ final class LgHome {
     private void build() {
         if (appsDirty) {
             apps = LgApps.load(act, cfg);
+            rowApps = LgApps.takeRow(act, apps, rowKinds);
             appsDirty = false;
         } else {
             for (LgApps.App a : apps) a.lastOpened = LastOpened.get(act, a.pkg);
@@ -1059,22 +1061,8 @@ final class LgHome {
 
     private void wideWidget() {
         chips.clear();
-        // Fork: first the titles last seen playing (MediaListener), one per app, newest first, as poster tiles;
-        // then apps opened lately, then other apps. Settings, stores, tools and add-ons never show here.
-        Map<String, LastPlayed> played = new HashMap<>();
-        for (LastPlayed p : LastPlayed.all(act)) {
-            if (chips.size() >= MAX_CHIPS || !LgApps.forRecent(p.pkg)) continue;
-            for (LgApps.App a : apps) {
-                if (a.pkg.equals(p.pkg)) {
-                    chips.add(a);
-                    played.put(a.pkg, p);
-                }
-            }
-        }
-        for (LgApps.App a : LgApps.recent(apps, MAX_CHIPS)) if (chips.size() < MAX_CHIPS && !chips.contains(a)) chips.add(a);
-        for (LgApps.App a : apps) {
-            if (chips.size() < MAX_CHIPS && !chips.contains(a) && LgApps.forRecent(a.pkg)) chips.add(a);
-        }
+        // Fork: a fixed row: media player, file viewer, app store, browser (LgApps.ROW); kept out of the band above.
+        chips.addAll(rowApps);
         chipRow = new FrameLayout(act);
         chipRow.setClipChildren(false);   // room for a focused chip's glow
         place(root, chipRow, 306, 452, 614, 74);
@@ -1084,63 +1072,19 @@ final class LgHome {
             FrameLayout chip = new FrameLayout(act);
             chip.setClipToOutline(true);
             chip.setBackground(glass(14, false));
-            LastPlayed p = played.get(a.pkg);
-            if (p != null) {
-                playedChip(chip, a, p, cw);
-            } else {
-                View tint = new View(act);
-                tint.setBackgroundColor((a.color & 0x00FFFFFF) | 0x33000000);
-                chip.addView(tint, new FrameLayout.LayoutParams(-1, -1));
-                ImageView logo = new ImageView(act);
-                logo.setImageDrawable(fresh(a.glyph));
-                logo.setScaleType(ImageView.ScaleType.FIT_START);
-                place(chip, logo, 8, 4, 34, 34);
-                // The app's name first (a logo alone isn't always enough), then when it was opened.
-                place(chip, text(a.label, 12, R.string.font_medium, 0xFFFFFFFF), 12, a.lastOpened > 0 ? 41 : 53, cw - 22, -1);
-                if (a.lastOpened > 0) {
-                    place(chip, text(capitalize(LastOpened.describe(act, a.lastOpened)), 10, R.string.font_regular, 0xA6FFFFFF),
-                            12, 57, cw - 22, -1);
-                }
-            }
+            // Fork: the logo, then what the app is (small caps) over its name.
+            ImageView logo = new ImageView(act);
+            logo.setImageDrawable(fresh(a.glyph));
+            logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            place(chip, logo, 12, 23, 28, 28);
+            TextView kind = text(LgApps.ROW_KINDS[rowKinds.get(i)], 9, R.string.font_medium, 0xA6FFFFFF);
+            kind.setAllCaps(true);
+            kind.setLetterSpacing(0.08f);
+            place(chip, kind, 50, 24, cw - 56, -1);
+            place(chip, text(a.label, 13, R.string.font_medium, 0xFFFFFFFF), 50, 38, cw - 56, -1);
             place(chipRow, chip, i * (cw + 10), 0, cw, 74);
             register("c" + i, chip, 14);
         }
-    }
-
-    /** A watched-title tile: the title's picture under a dark fade, its app's logo, the title and when. OK opens the app. */
-    private void playedChip(FrameLayout chip, LgApps.App app, LastPlayed played, float cw) {
-        String key = played.title + "\n" + LastPlayed.artStamp(act, played.pkg);
-        if (!key.equals(playedKeys.get(played.pkg))) {
-            playedKeys.put(played.pkg, key);
-            playedArt.remove(played.pkg);
-            Bitmap art = LastPlayed.art(act, played.pkg);
-            if (art != null) playedArt.put(played.pkg, art);
-        }
-        Bitmap art = playedArt.get(played.pkg);
-        if (art != null) {
-            ImageView pic = new ImageView(act);
-            pic.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            pic.setImageBitmap(art);
-            chip.addView(pic, new FrameLayout.LayoutParams(-1, -1));
-            View fade = new View(act);
-            fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    new int[]{0x66000000, 0x1A000000, 0xD9000000}));
-            chip.addView(fade, new FrameLayout.LayoutParams(-1, -1));
-        } else {
-            View tint = new View(act);
-            tint.setBackgroundColor((app.color & 0x00FFFFFF) | 0x33000000);
-            chip.addView(tint, new FrameLayout.LayoutParams(-1, -1));
-        }
-        ImageView logo = new ImageView(act);
-        logo.setImageDrawable(fresh(app.glyph));
-        logo.setScaleType(ImageView.ScaleType.FIT_START);
-        place(chip, logo, 8, 4, 28, 28);
-        TextView title = text(played.title, 12, R.string.font_medium, 0xFFFFFFFF);
-        title.setSingleLine(true);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        place(chip, title, 12, 41, cw - 22, -1);
-        place(chip, text(capitalize(LastOpened.describe(act, played.when)), 10, R.string.font_regular, 0xA6FFFFFF),
-                12, 57, cw - 22, -1);
     }
 
     // ---- focus ----

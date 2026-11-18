@@ -29,6 +29,15 @@
     <!-- Android 11+ package visibility: lets the launcher list the TV apps it shows as tiles, and the
          apps that declare a module card (docs/specs/card.md). -->
     <queries>
+        <!-- Fork: Home's bottom row finds a media player and a browser that aren't on its known list (LgApps.ROW). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="video/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
         <!-- The standard settings handlers, so package visibility doesn't hide them and send the pills to a vendor fallback by mistake. -->
         <intent>
             <action android:name="android.settings.SETTINGS" />
@@ -99,6 +108,7 @@
     </queries>
 
     <application
+        android:name=".LauncherApp"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
@@ -294,17 +304,6 @@
             android:directBootAware="true"
             android:exported="true"
             android:label="@string/home_key_name"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-        <!-- Fork: notes the title other apps are playing (their media sessions only) for Home's last-watched card.
-             cmd notification allow_listener com.gathin.tvhome/com.gathin.tvhome.MediaListener -->
-        <service
-            android:name=".MediaListener"
-            android:exported="true"
-            android:label="@string/lg_last_watched"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

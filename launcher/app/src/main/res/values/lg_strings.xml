@@ -11,7 +11,6 @@
     <string name="lg_wifi" translatable="false">Wi-Fi</string>
     <string name="lg_bluetooth" translatable="false">Bluetooth</string>
     <string name="lg_cast" translatable="false">Cast</string>
-    <string name="lg_last_watched" translatable="false">Last watched</string>
     <string name="lg_input" translatable="false">Input</string>
     <string name="lg_picture" translatable="false">Picture</string>
     <string name="lg_brightness" translatable="false">Brightness</string>

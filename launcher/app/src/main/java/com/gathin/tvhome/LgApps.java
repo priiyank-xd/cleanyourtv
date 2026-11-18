@@ -128,6 +128,57 @@ final class LgApps {
         return !isSystemSettings(pkg) && !NOT_RECENT.contains(pkg) && !pkg.startsWith("io.github.maxhayim.");
     }
 
+    /**
+     * Fork: the bottom row on Home, one app per kind: media player, file viewer, app store, browser. Known apps first,
+     * in the order given; for a player or browser not on the list, any installed app that opens a video or a web page.
+     */
+    static final String[][] ROW = {
+            {"org.videolan.vlc", "com.mxtech.videoplayer.ad", "com.mxtech.videoplayer.pro", "com.sdmc.implayer",
+                    "is.xyz.mpv", "com.brouken.player", "com.archos.mediacenter.videofree"},
+            {"com.amaze.filemanager", "com.lonelycatgames.Xplore", "com.alphainventor.filemanager",
+                    "pl.solidexplorer2", "com.google.android.apps.nbu.files", "com.estrongs.android.pop",
+                    "com.droidlogic.FileBrower", "com.android.documentsui"},
+            {"com.android.vending", "com.amazon.venezia", "cm.aptoidetv.pt", "com.aurora.store"},
+            {"com.internet.tvbrowser", "org.mozilla.tv.firefox", "com.tcl.browser", "com.opera.browser",
+                    "com.android.chrome", "org.mozilla.firefox"},
+    };
+
+    /** What each {@link #ROW} kind is, shown above the app's name on its tile. */
+    static final String[] ROW_KINDS = {"Media player", "Files", "App store", "Web"};
+
+    private static Intent rowFallback(int kind) {
+        if (kind == 0) return new Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse("file:///x.mp4"), "video/*");
+        if (kind == 3) return new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://example.com"));
+        return null;
+    }
+
+    /**
+     * Removes the bottom row's apps (see {@link #ROW}) from {@code apps} and returns them, at most one per kind; each
+     * one's kind (an index into {@link #ROW_KINDS}) goes into {@code kinds}.
+     */
+    static List<App> takeRow(Context ctx, List<App> apps, List<Integer> kinds) {
+        kinds.clear();
+        List<App> row = new ArrayList<>();
+        for (int kind = 0; kind < ROW.length; kind++) {
+            App pick = null;
+            for (String pkg : ROW[kind]) {
+                for (App a : apps) if (pick == null && a.pkg.equals(pkg)) pick = a;
+            }
+            Intent fallback = rowFallback(kind);
+            if (pick == null && fallback != null) {
+                for (ResolveInfo ri : ctx.getPackageManager().queryIntentActivities(fallback, 0)) {
+                    for (App a : apps) if (pick == null && a.pkg.equals(ri.activityInfo.packageName)) pick = a;
+                }
+            }
+            if (pick != null) {
+                row.add(pick);
+                kinds.add(kind);
+                apps.remove(pick);
+            }
+        }
+        return row;
+    }
+
     static List<App> recent(List<App> apps, int max) {
         List<App> out = new ArrayList<>();
         for (App a : apps) if (a.lastOpened > 0 && forRecent(a.pkg)) out.add(a);
