@@ -211,7 +211,11 @@ public class MainActivity extends Activity {
 
         heading(getString(R.string.heading_several));
         int[] sharing = {R.string.sharing_one_pair, R.string.sharing_auracast, R.string.sharing_no_broadcast};
-        add(new Row(this, getString(sharing[Quiet.sharingCase(Build.VERSION.SDK_INT, broadcastSupport())]), null, null));
+        // A note, not a setting: in the rows' description style, so it doesn't read as a big title.
+        TextView note = Row.text(this, 11.5f, false, 0x8CFFFFFF);
+        note.setText(sharing[Quiet.sharingCase(Build.VERSION.SDK_INT, broadcastSupport())]);
+        note.setPadding(px(12), px(4), px(12), px(8));
+        rows.addView(note);
 
         View keep = focused >= 0 && focused < rows.getChildCount() ? rows.getChildAt(focused) : null;
         (keep != null && keep.isFocusable() ? keep : first).requestFocus();

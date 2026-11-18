@@ -41,8 +41,8 @@ public class MainActivity extends Activity {
         // Drawn like the launcher's Settings panel (SettingsHubActivity): a glass side panel over what is on screen.
         FrameLayout root = new FrameLayout(this);
         View dim = new View(this);
-        // Lighter than the launcher's 60 %: the picture behind is the live preview of the dimming.
-        dim.setBackgroundColor(0x66000000);
+        // The launcher's 60 %: lighter let Home's text show through the panel on the Arc 5.
+        dim.setBackgroundColor(0x99000000);
         root.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout page = new LinearLayout(this);
