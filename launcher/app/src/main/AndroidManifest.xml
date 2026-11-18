@@ -309,6 +309,14 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <!-- Fork: the Sleep Timer add-on sends its end time here, for the Art mode card's countdown. -->
+        <receiver
+            android:name=".ArtStatus$Receiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.gathin.tvhome.SLEEP_TIMER" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name=".GuardConfig"
             android:exported="true"

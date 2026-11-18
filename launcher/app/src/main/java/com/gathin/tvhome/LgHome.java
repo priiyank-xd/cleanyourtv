@@ -43,6 +43,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextClock;
 import android.widget.TextView;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -167,6 +169,18 @@ final class LgHome {
         }
     };
 
+    /** Fork: the Art mode card's live line (sleep timer, sound device), one at a time, the next every STATUS_MS. */
+    private static final long STATUS_MS = 6000;
+    private TextView statusLine;
+    private int statusIndex;
+    private final Runnable statusTick = new Runnable() {
+        @Override public void run() {
+            statusIndex++;
+            showStatus(true);
+            handler.postDelayed(this, STATUS_MS);
+        }
+    };
+
     LgHome(MainActivity act) {
         this.act = act;
     }
@@ -221,6 +235,8 @@ final class LgHome {
         handler.postDelayed(advance, SLIDE_MS);
         handler.removeCallbacks(rotateNew);
         handler.postDelayed(rotateNew, NEW_MS);
+        handler.removeCallbacks(statusTick);
+        handler.postDelayed(statusTick, STATUS_MS);
         root.requestFocus();
         List<String> pkgs = new ArrayList<>();
         for (LgApps.App a : apps) pkgs.add(a.pkg);
@@ -243,6 +259,7 @@ final class LgHome {
         handler.removeCallbacks(artTick);
         handler.removeCallbacks(advance);
         handler.removeCallbacks(rotateNew);
+        handler.removeCallbacks(statusTick);
     }
 
     void onNewIntent() {
@@ -840,9 +857,43 @@ final class LgHome {
         style(clock, 36, R.string.font_light, 0xFFFFFFFF);
         ClockFormat.apply(clock, cfg.clockFormat);   // Home's only clock, so it follows the Clock setting
         place(card, clock, 20, 14, -1, -1);
-        place(card, text(act.getString(R.string.lg_art_mode), 13, R.string.font_regular, 0xBFFFFFFF), 22, 62, 260, -1);
+        statusLine = text(act.getString(R.string.lg_art_mode), 13, R.string.font_regular, 0xBFFFFFFF);
+        place(card, statusLine, 22, 62, 260, -1);
+        showStatus(false);
         place(root, card, 624, 200, 296, 112);
         register("clock", card, 16);
+    }
+
+    /** Fork: sets the Art mode card's line: "Art mode" when nothing is on, else one of the live lines in turn. */
+    private void showStatus(boolean fade) {
+        if (statusLine == null) return;
+        List<String> lines = ArtStatus.lines(System.currentTimeMillis(), ArtStatus.sleepEnd(act), soundOn());
+        String next = lines.isEmpty() ? act.getString(R.string.lg_art_mode) : lines.get(statusIndex % lines.size());
+        if (next.contentEquals(statusLine.getText())) return;
+        TextView t = statusLine;
+        if (!fade || cfg.reducedMotion) { t.setText(next); return; }
+        t.animate().alpha(0f).setDuration(ms(200)).withEndAction(() -> {
+            t.setText(next);
+            t.animate().alpha(1f).setDuration(ms(200)).start();
+        }).start();
+    }
+
+    /** Fork: the connected headphones or speaker the sound can go to (Bluetooth, wired, USB), or null. */
+    private String soundOn() {
+        AudioManager am = act.getSystemService(AudioManager.class);
+        if (am == null) return null;
+        for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            int type = d.getType();
+            boolean bt = type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                    || (Build.VERSION.SDK_INT >= 31 && (type == AudioDeviceInfo.TYPE_BLE_HEADSET
+                    || type == AudioDeviceInfo.TYPE_BLE_SPEAKER));
+            boolean wired = type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                    || type == AudioDeviceInfo.TYPE_USB_HEADSET;
+            if (!bt && !wired) continue;
+            CharSequence name = d.getProductName();
+            return name != null && name.length() > 0 ? name.toString() : "headphones";
+        }
+        return null;
     }
 
     private void squareWidget() {
