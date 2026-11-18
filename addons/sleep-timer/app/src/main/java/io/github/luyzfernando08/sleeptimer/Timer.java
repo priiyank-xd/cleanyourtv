@@ -40,10 +40,12 @@ final class Timer {
         prefs(ctx).edit().putLong("end", end).apply();
         schedule(ctx, ACTION_WARN, Math.max(System.currentTimeMillis(), end - WARN_MS));
         schedule(ctx, ACTION_SLEEP, end + 2_000);
+        tellLauncher(ctx, end);
     }
 
     static void cancel(Context ctx) {
         prefs(ctx).edit().remove("end").apply();
+        tellLauncher(ctx, 0);
         AlarmManager am = ctx.getSystemService(AlarmManager.class);
         am.cancel(pending(ctx, ACTION_WARN));
         am.cancel(pending(ctx, ACTION_SLEEP));
@@ -57,6 +59,11 @@ final class Timer {
 
     static boolean canSleep() {
         return SleepService.running();
+    }
+
+    /** Tells the cleanyourtv launcher when the timer ends (0: off), for the countdown on its LG-style Home. */
+    private static void tellLauncher(Context ctx, long end) {
+        ctx.sendBroadcast(new Intent("com.gathin.tvhome.SLEEP_TIMER").setPackage("com.gathin.tvhome").putExtra("end", end));
     }
 
     private static void schedule(Context ctx, String action, long at) {
