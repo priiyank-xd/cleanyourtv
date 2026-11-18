@@ -40,14 +40,14 @@ public class WarningActivity extends Activity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER_HORIZONTAL);
-        box.setBackground(Ui.pill(this, 0xF2161826));
+        box.setBackground(Ui.sheet(this));
         int pad = Ui.dp(this, 36);
         box.setPadding(pad, pad, pad, pad);
 
-        TextView title = Ui.text(this, 30, Color.WHITE);
+        TextView title = Ui.title(this, 30);
         title.setText(R.string.warning_title);
         box.addView(title);
-        seconds = Ui.text(this, 22, 0xFFB9B2FF);
+        seconds = Ui.text(this, 22, 0xCCFFFFFF);
         seconds.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 14));
         box.addView(seconds);
         TextView more = Ui.row(box, 420);

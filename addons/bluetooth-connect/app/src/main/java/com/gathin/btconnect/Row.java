@@ -1,12 +1,14 @@
 package com.gathin.btconnect;
 
 import android.content.Context;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
  * One settings row: a name with a line saying what it does on the left, its value on the right; OK runs it.
+ * Drawn like a row of the launcher's Settings panel (SettingsHubActivity).
  */
 final class Row extends LinearLayout {
     private final TextView value;
@@ -14,10 +16,11 @@ final class Row extends LinearLayout {
 
     Row(Context context, String name, String description, Runnable onClick) {
         super(context);
-        float dp = context.getResources().getDisplayMetrics().density;
+        float u = unit(context);
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
-        int ph = Math.round(16 * dp), pv = Math.round(10 * dp);
+        setMinimumHeight(Math.round(48 * u));
+        int ph = Math.round(12 * u), pv = Math.round(8 * u);
         setPadding(ph, pv, ph, pv);
         setBackgroundResource(R.drawable.row_background);
         setFocusable(onClick != null);
@@ -26,24 +29,18 @@ final class Row extends LinearLayout {
 
         LinearLayout text = new LinearLayout(context);
         text.setOrientation(VERTICAL);
-        TextView label = new TextView(context);
+        TextView label = text(context, 15, true, 0xFFFFFFFF);
         label.setText(name);
-        label.setTextSize(17);
-        label.setTextColor(0xFFFFFFFF);
         text.addView(label);
-        desc = new TextView(context);
-        desc.setTextSize(12);
-        desc.setTextColor(0xFF8B949E);
-        desc.setPadding(0, Math.round(2 * dp), Math.round(16 * dp), 0);
+        desc = text(context, 11.5f, false, 0x8CFFFFFF);
+        desc.setPadding(0, Math.round(3 * u), Math.round(12 * u), 0);
         text.addView(desc);
         setDetail(description);
         addView(text, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 
-        value = new TextView(context);
-        value.setTextSize(17);
-        value.setTextColor(0xFFC9D1D9);
+        value = text(context, 15, false, 0xCCFFFFFF);
         value.setGravity(Gravity.END);
-        value.setMinWidth(Math.round(90 * dp));
+        value.setMinWidth(Math.round(52 * u));
         addView(value, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
     }
 
@@ -54,5 +51,20 @@ final class Row extends LinearLayout {
 
     void setValue(String v) {
         value.setText(v);
+    }
+
+    /** The launcher's layout unit: 1/960 of the screen width, so sizes match its Settings panel on any TV. */
+    static float unit(Context context) {
+        return context.getResources().getDisplayMetrics().widthPixels / 960f;
+    }
+
+    /** Text in the launcher's font (Outfit) and sizes, given in launcher units. */
+    static TextView text(Context context, float size, boolean medium, int color) {
+        TextView t = new TextView(context);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, size * unit(context));
+        t.setTypeface(context.getResources().getFont(medium ? R.font.outfit_medium : R.font.outfit_regular));
+        t.setTextColor(color);
+        t.setIncludeFontPadding(false);
+        return t;
     }
 }

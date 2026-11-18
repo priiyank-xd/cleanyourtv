@@ -34,9 +34,9 @@ final class RemotePicker extends Dialog {
         super.onCreate(state);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         LinearLayout root=new LinearLayout(getContext());root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(32),dp(24),dp(32),dp(24));root.setBackground(Ui.pill(getContext(),0xff142332));
-        TextView heading=Ui.text(getContext(),26,Color.WHITE);heading.setText(title);root.addView(heading);
-        TextView hint=Ui.text(getContext(),15,0xff9eb4c8);hint.setText(R.string.remote_hint);hint.setPadding(0,dp(8),0,dp(20));root.addView(hint);
+        root.setPadding(dp(32),dp(24),dp(32),dp(24));root.setBackground(Ui.sheet(getContext()));
+        TextView heading=Ui.title(getContext(),26);heading.setText(title);root.addView(heading);
+        TextView hint=Ui.text(getContext(),15,0xB3FFFFFF);hint.setText(R.string.remote_hint);hint.setPadding(0,dp(8),0,dp(20));root.addView(hint);
         LinearLayout body=new LinearLayout(getContext());body.setGravity(Gravity.CENTER_VERTICAL);root.addView(body);
         LinearLayout fields=new LinearLayout(getContext());fields.setGravity(Gravity.CENTER);
         body.addView(fields,new LinearLayout.LayoutParams(0,dp(156),1));
@@ -49,17 +49,14 @@ final class RemotePicker extends Dialog {
             wheel.setFocusable(true);wheel.setClickable(true);
             wheel.setPadding(dp(8),dp(10),dp(8),dp(10));
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(156),1);lp.setMargins(dp(6),0,dp(6),0);fields.addView(wheel,lp);
-            TextView caption=part(wheel,17,24,0xff9eb4c8);caption.setText(labels[i]);
+            TextView caption=part(wheel,17,24,0x8CFFFFFF);caption.setText(labels[i]);
             TextView upArrow=part(wheel,20,24,Color.WHITE);upArrow.setText("\u25b2");
-            TextView number=part(wheel,42,58,Color.WHITE);numbers[i]=number;
+            TextView number=part(wheel,42,58,Color.WHITE);number.setTypeface(Ui.font(getContext(),true));numbers[i]=number;
             TextView downArrow=part(wheel,20,24,Color.WHITE);downArrow.setText("\u25bc");
             wheel.setOnFocusChangeListener((v,focused)->{
-                wheel.setBackground(Ui.pill(getContext(),focused?0xff245b67:0xff1c3043));
-                int color=focused?0xff8cf0d3:Color.WHITE;
-                upArrow.setTextColor(color);number.setTextColor(color);downArrow.setTextColor(color);
-                caption.setTextColor(focused?0xffb8e8e3:0xff9eb4c8);
+                caption.setTextColor(focused?Color.WHITE:0x8CFFFFFF);
             });
-            wheel.setBackground(Ui.pill(getContext(),0xff1c3043));
+            wheel.setBackground(Ui.glassStates(getContext()));
             wheel.setOnClickListener(v->advance(index));
             wheel.setOnKeyListener((v,key,event)->{
                 boolean up=key==KeyEvent.KEYCODE_DPAD_UP, down=key==KeyEvent.KEYCODE_DPAD_DOWN;

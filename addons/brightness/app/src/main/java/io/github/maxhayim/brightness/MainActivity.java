@@ -4,11 +4,17 @@ import android.app.Activity;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.format.DateFormat;
+import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -32,34 +38,52 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Drawn like the launcher's Settings panel (SettingsHubActivity): a glass side panel over what is on screen.
+        FrameLayout root = new FrameLayout(this);
+        View dim = new View(this);
+        // Lighter than the launcher's 60 %: the picture behind is the live preview of the dimming.
+        dim.setBackgroundColor(0x66000000);
+        root.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(0xFF0D1117);
-        page.setPadding(px(48), px(32), px(48), px(24));
-        TextView title = new TextView(this);
+        GradientDrawable tint = new GradientDrawable();
+        tint.setColor(0xB310141E);
+        tint.setCornerRadius(px(26));
+        GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0x2EFFFFFF, 0x0FFFFFFF, 0x08FFFFFF});
+        sheen.setCornerRadius(px(26));
+        sheen.setStroke(Math.max(1, px(1)), 0x3DFFFFFF);
+        page.setBackground(new LayerDrawable(new Drawable[]{tint, sheen}));
+        page.setClipToOutline(true);
+        page.setPadding(0, px(26), 0, px(16));
+        FrameLayout.LayoutParams pageLp = new FrameLayout.LayoutParams(px(480), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END);
+        pageLp.setMargins(0, px(16), px(16), px(16));
+        root.addView(page, pageLp);
+
+        TextView title = Row.text(this, 22, true, 0xFFFFFFFF);
         title.setText(R.string.app_name);
-        title.setTextSize(28);
-        title.setTextColor(0xFFFFFFFF);
-        status = new TextView(this);
-        status.setTextSize(15);
-        status.setTextColor(0xFF8B949E);
-        status.setPadding(0, 0, 0, px(16));
+        title.setPadding(px(28), 0, px(28), px(8));
+        status = Row.text(this, 12, false, 0x8CFFFFFF);
+        status.setPadding(px(28), 0, px(28), px(12));
         page.addView(title);
         page.addView(status);
 
         ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setVerticalFadingEdgeEnabled(true);
+        scroll.setFadingEdgeLength(px(28));
         rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(px(16), 0, px(16), px(8));
         scroll.addView(rows);
         page.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        TextView hint = new TextView(this);
+        TextView hint = Row.text(this, 11, false, 0x80FFFFFF);
         hint.setText("◀ ▶ change    OK switch    Back closes, settings stay");
-        hint.setTextSize(13);
-        hint.setTextColor(0xFF8B949E);
-        hint.setPadding(px(16), px(12), 0, 0);
+        hint.setPadding(px(28), px(10), px(28), 0);
         page.addView(hint);
-        setContentView(page);
+        setContentView(root);
         tv = new TvPicture(this);
         tvAvailable = tv.available();
         build();
@@ -273,7 +297,8 @@ public class MainActivity extends Activity {
         return (brightness - Dimming.MIN_BRIGHTNESS) / (float) (Dimming.MAX_BRIGHTNESS - Dimming.MIN_BRIGHTNESS);
     }
 
-    private int px(int dp) {
-        return Math.round(dp * getResources().getDisplayMetrics().density);
+    /** Launcher units (1/960 of the screen width) to pixels. */
+    private int px(int units) {
+        return Math.round(units * Row.unit(this));
     }
 }

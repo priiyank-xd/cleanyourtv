@@ -52,12 +52,12 @@
             android:taskAffinity=""
             android:exported="true"
             android:excludeFromRecents="true"
-            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+            android:theme="@style/Panel" />
         <!-- The timer picker: the app's own tile and, on the cleanyourtv launcher, its module card. -->
         <activity
             android:name=".TimerActivity"
             android:exported="true"
-            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            android:theme="@style/Panel">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

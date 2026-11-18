@@ -17,6 +17,11 @@
 
     <string name="schedule_row">Schedule</string>
 
+    <!-- The picker and schedule pages: see-through, so they float as a glass panel over the dimmed Home. -->
+    <style name="Panel" parent="android:Theme.DeviceDefault.NoActionBar.Fullscreen">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
     <style name="Warning" parent="android:Theme.DeviceDefault.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>

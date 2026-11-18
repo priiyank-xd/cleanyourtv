@@ -13,12 +13,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -49,27 +55,45 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        float dp = getResources().getDisplayMetrics().density;
+        // Drawn like the launcher's Settings panel (SettingsHubActivity): a glass side panel over the dimmed Home.
+        FrameLayout root = new FrameLayout(this);
+        View dim = new View(this);
+        dim.setBackgroundColor(0x99000000);
+        root.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(0xFF0D1117);
-        page.setPadding(Math.round(48 * dp), Math.round(32 * dp), Math.round(48 * dp), Math.round(24 * dp));
-        TextView title = new TextView(this);
+        GradientDrawable tint = new GradientDrawable();
+        tint.setColor(0xB310141E);
+        tint.setCornerRadius(px(26));
+        GradientDrawable sheen = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0x2EFFFFFF, 0x0FFFFFFF, 0x08FFFFFF});
+        sheen.setCornerRadius(px(26));
+        sheen.setStroke(Math.max(1, px(1)), 0x3DFFFFFF);
+        page.setBackground(new LayerDrawable(new Drawable[]{tint, sheen}));
+        page.setClipToOutline(true);
+        page.setPadding(0, px(26), 0, px(16));
+        FrameLayout.LayoutParams pageLp = new FrameLayout.LayoutParams(px(400), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END);
+        pageLp.setMargins(0, px(16), px(16), px(16));
+        root.addView(page, pageLp);
+
+        TextView title = Row.text(this, 22, true, 0xFFFFFFFF);
         title.setText(R.string.app_name);
-        title.setTextSize(28);
-        title.setTextColor(0xFFFFFFFF);
-        status = new TextView(this);
-        status.setTextSize(15);
-        status.setTextColor(0xFF8B949E);
-        status.setPadding(0, 0, 0, Math.round(16 * dp));
+        title.setPadding(px(28), 0, px(28), px(8));
+        status = Row.text(this, 12, false, 0x8CFFFFFF);
+        status.setPadding(px(28), 0, px(28), px(12));
         page.addView(title);
         page.addView(status);
         ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setVerticalFadingEdgeEnabled(true);
+        scroll.setFadingEdgeLength(px(28));
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(px(16), 0, px(16), px(8));
         scroll.addView(list);
         page.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        setContentView(page);
+        setContentView(root);
         adapter = getSystemService(BluetoothManager.class).getAdapter();
     }
 
@@ -151,6 +175,11 @@ public class MainActivity extends Activity {
                 ? "No paired speakers. Pair one in the TV's Bluetooth settings first."
                 : "OK connects or disconnects a speaker.");
         if (list.getChildCount() > 0) list.getChildAt(Math.min(focus, list.getChildCount() - 1)).requestFocus();
+    }
+
+    /** Launcher units (1/960 of the screen width) to pixels. */
+    private int px(int units) {
+        return Math.round(units * Row.unit(this));
     }
 
     private void toggle(BluetoothDevice device, boolean connected) {

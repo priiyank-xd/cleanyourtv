@@ -2,7 +2,6 @@ package io.github.luyzfernando08.sleeptimer;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.text.format.DateFormat;
 import android.view.Gravity;
@@ -19,18 +18,20 @@ public class TimerActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setBackgroundColor(0xFF0B0D12);
-        int pad = Ui.dp(this, 48);
+        // A glass panel over the dimmed Home, like the launcher's Settings panel.
+        root.setBackground(Ui.sheet(this));
+        root.setClipToOutline(true);
+        int pad = Ui.dp(this, 36);
         root.setPadding(pad, pad, pad, pad);
 
-        TextView title = Ui.text(this, 34, Color.WHITE);
+        TextView title = Ui.title(this, 34);
         title.setText(R.string.app_name);
         root.addView(title);
         TextView hint = Ui.text(this, 16, 0xB3FFFFFF);
         hint.setText(R.string.hint);
         hint.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 4));
         root.addView(hint);
-        state = Ui.text(this, 18, 0xFFB9B2FF);
+        state = Ui.text(this, 18, 0xCCFFFFFF);
         state.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 16));
         root.addView(state);
 
@@ -67,9 +68,13 @@ public class TimerActivity extends Activity {
 
         for(TextView row:new TextView[]{cancel,schedule})row.getLayoutParams().width=-1;
         android.widget.ScrollView scroll=new android.widget.ScrollView(this);
-        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(root,new android.widget.ScrollView.LayoutParams(-1,-2));
-        setContentView(scroll);
+        android.widget.FrameLayout screen=new android.widget.FrameLayout(this);
+        screen.setBackgroundColor(Ui.DIM);
+        // The five lengths (798 dp) plus the panel's padding.
+        screen.addView(scroll,new android.widget.FrameLayout.LayoutParams(Ui.dp(this,798)+2*pad,-2,Gravity.CENTER));
+        setContentView(screen);
     }
 
     /** Also when the screen comes back from the background, so it never shows a timer that has changed. */

@@ -40,18 +40,18 @@ public class ScheduleActivity extends Activity {
     }
     private int focusIndex;
     private void render() {
-        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(0xff0b1420);
+        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackground(Ui.sheet(this));root.setClipToOutline(true);
         int pad=Ui.dp(this,28);root.setPadding(pad,pad,pad,pad);
-        TextView title=Ui.text(this,30,Color.WHITE);title.setText(R.string.sched_0);root.addView(title);
-        TextView hint=Ui.text(this,15,0xff9eb4c8);hint.setText(R.string.remote_page_hint);hint.setPadding(0,Ui.dp(this,6),0,Ui.dp(this,12));root.addView(hint);
+        TextView title=Ui.title(this,30);title.setText(R.string.sched_0);root.addView(title);
+        TextView hint=Ui.text(this,15,0xB3FFFFFF);hint.setText(R.string.remote_page_hint);hint.setPadding(0,Ui.dp(this,6),0,Ui.dp(this,12));root.addView(hint);
         TextView toggle=Ui.row(root,880);toggle.setText(enabled?R.string.sched_2:R.string.sched_3);
-        toggle.setTextColor(enabled?0xff8cf0d3:0xffffc878);toggle.setOnClickListener(v->{enabled=!enabled;focusIndex=0;render();});
+        toggle.setTextColor(enabled?Color.WHITE:0x8CFFFFFF);toggle.setOnClickListener(v->{enabled=!enabled;focusIndex=0;render();});
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);scroll.addView(list);
         section(R.string.remote_events);
         for(ScheduleRules.Rule r:rules) {
-            TextView row=button(label(r),()->edit(r));row.setTextColor(r.wake?0xff8cf0d3:0xffbcb5ff);
+            TextView row=button(label(r),()->edit(r));row.setTextColor(r.wake?Color.WHITE:0xCCFFFFFF);
         }
         button(getString(R.string.sched_4),()->edit(null));
         section(R.string.remote_exclusions);
@@ -61,13 +61,16 @@ public class ScheduleActivity extends Activity {
             }).show();
         });
         button(getString(R.string.sched_9),()->dateRange(null));
-        TextView save=Ui.row(root,880);save.setText(R.string.sched_10);save.setGravity(android.view.Gravity.CENTER);save.setTextColor(0xff8cf0d3);
-        save.setOnClickListener(v->{Schedule.save(this,enabled,rules,pauses);finish();});
-        setContentView(root);
+        TextView save=Ui.row(root,880);save.setText(R.string.sched_10);save.setGravity(android.view.Gravity.CENTER);        save.setOnClickListener(v->{Schedule.save(this,enabled,rules,pauses);finish();});
+        // A glass panel over the dimmed Home, like the launcher's Settings panel: the rows (880 dp) plus padding.
+        FrameLayout screen=new FrameLayout(this);screen.setBackgroundColor(Ui.DIM);
+        FrameLayout.LayoutParams panel=new FrameLayout.LayoutParams(Ui.dp(this,880)+2*pad,-1,android.view.Gravity.CENTER);
+        panel.setMargins(0,Ui.dp(this,24),0,Ui.dp(this,24));screen.addView(root,panel);
+        setContentView(screen);
         if(focusIndex<=0||focusIndex>list.getChildCount()||!list.getChildAt(focusIndex-1).requestFocus())toggle.requestFocus();
     }
     private void section(int text) {
-        TextView heading=Ui.text(this,14,0xff91a6bd);heading.setText(text);heading.setPadding(Ui.dp(this,8),Ui.dp(this,18),0,0);list.addView(heading);
+        TextView heading=Ui.text(this,14,0x80FFFFFF);heading.setTypeface(Ui.font(this,true));heading.setText(text);heading.setPadding(Ui.dp(this,8),Ui.dp(this,18),0,0);list.addView(heading);
     }
     private TextView button(String text,Runnable action) {
         TextView b=Ui.row(list,880);b.setText(text);b.setTextSize(19);
