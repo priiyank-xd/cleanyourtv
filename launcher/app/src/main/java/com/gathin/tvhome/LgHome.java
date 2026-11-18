@@ -84,7 +84,7 @@ final class LgHome {
     /** Fork: the bottom row's apps, taken out of {@link #apps} (the band). */
     private List<LgApps.App> rowApps = new ArrayList<>();
     private final List<Integer> rowKinds = new ArrayList<>();
-    /** One page of the feature card: an app (last opened or a favourite) or a trending title. */
+    /** One page of the feature card: a trending title (rank 1..), the "Can't decide?" title (rank 0), or an app. */
     private static final class Slide {
         final LgApps.App app;
         final Tmdb.Title title;
@@ -141,6 +141,10 @@ final class LgHome {
     private final View[] quick = new View[QUICK];
     private String focus = "a0";
     private int slide, first;
+    /** Fork: backdrop of the feature card's "Can't decide?" title; cleared on resume so each visit gets a new one. */
+    private String pickKey;
+    /** Fork: how many slides the feature card had at the last build. */
+    private int shownSlides;
     private boolean resumed, okDown;
     /** Fork: reorder mode, started from the circle after the last app; moving is the app being carried, or -1. */
     private boolean reordering;
@@ -218,6 +222,7 @@ final class LgHome {
 
     void onResume() {
         resumed = true;
+        pickKey = null;
         // Choices may have changed in the Settings menu or Launcher settings while Home was hidden.
         if (revision() != cfgRevision) {
             cfg = Config.load(act);
@@ -316,10 +321,14 @@ final class LgHome {
             return true;
         }
         if (reordering) { reorderMove(dir); return true; }
-        // Fork: Left pages the feature card back (round to the last slide); Right always moves on to Quick settings,
-        // so leaving the card is one press, never one per slide.
+        // Fork: Left pages the feature card back (round to the last slide); Right pages forward, and moves on to
+        // Quick settings from the last slide.
         if (focus.equals("feat") && dir == LgNav.LEFT && slides.size() > 1) {
             showSlide((slide - 1 + slides.size()) % slides.size());
+            return true;
+        }
+        if (focus.equals("feat") && dir == LgNav.RIGHT && slide < slides.size() - 1) {
+            showSlide(slide + 1);
             return true;
         }
         setFocus(LgNav.next(focus, dir, bandCount(), chips.size(), QUICK, first));
@@ -615,18 +624,26 @@ final class LgHome {
         slides.clear();
         slideViews.clear();
         slideDots.clear();
-        List<LgApps.App> picked = new ArrayList<>();
-        List<LgApps.App> recent = LgApps.recent(apps, 1);
-        if (!recent.isEmpty()) picked.add(recent.get(0));
-        for (String pkg : cfg.dockApps) {
-            if (picked.size() >= 3) break;
-            for (LgApps.App a : apps) if (a.pkg.equals(pkg) && !picked.contains(a)) picked.add(a);
-        }
-        for (LgApps.App a : apps) if (picked.size() < 3 && !picked.contains(a)) picked.add(a);
-        for (int i = 0; i < picked.size(); i++) slides.add(new Slide(picked.get(i), null, 0, i == 0 && !recent.isEmpty()));
+        // Fork: only movie-art slides (Trending, Can't decide?); the app slides on the wallpaper show only when
+        // there are no titles (no TMDB key or offline), so the card is never empty.
         List<Tmdb.Title> trend = feed.trending();
         for (int i = 0; i < trend.size(); i++) slides.add(new Slide(null, trend.get(i), i + 1, false));
-        if (slide >= slides.size()) slide = 0;
+        Tmdb.Title pick = pickTitle(trend);
+        if (pick != null) slides.add(new Slide(null, pick, 0, false));
+        if (slides.isEmpty()) {
+            List<LgApps.App> picked = new ArrayList<>();
+            List<LgApps.App> recent = LgApps.recent(apps, 1);
+            if (!recent.isEmpty()) picked.add(recent.get(0));
+            for (String pkg : cfg.dockApps) {
+                if (picked.size() >= 3) break;
+                for (LgApps.App a : apps) if (a.pkg.equals(pkg) && !picked.contains(a)) picked.add(a);
+            }
+            for (LgApps.App a : apps) if (picked.size() < 3 && !picked.contains(a)) picked.add(a);
+            for (int i = 0; i < picked.size(); i++) slides.add(new Slide(picked.get(i), null, 0, i == 0 && !recent.isEmpty()));
+        }
+        // A different set of slides (app slides to titles when the feed lands) starts again from the first one.
+        if (slide >= slides.size() || slides.size() != shownSlides) slide = 0;
+        shownSlides = slides.size();
         feature = new FrameLayout(act);
         feature.setClipToOutline(true);
         feature.setBackground(round(0xFF15161D, 18));
@@ -634,7 +651,8 @@ final class LgHome {
         register("feat", feature, 18);
         for (int i = 0; i < slides.size(); i++) {
             Slide sl = slides.get(i);
-            View v = sl.title != null ? titleSlideView(sl.title, sl.rank) : slideView(sl.app, sl.cont);
+            View v = sl.title == null ? slideView(sl.app, sl.cont) : titleSlideView(sl.title, sl.rank > 0
+                    ? act.getString(R.string.lg_trending_rank, sl.rank) : act.getString(R.string.lg_pick));
             v.setAlpha(i == slide ? 1f : 0f);
             feature.addView(v, new FrameLayout.LayoutParams(-1, -1));
             slideViews.add(v);
@@ -695,7 +713,25 @@ final class LgHome {
         return s;
     }
 
-    private View titleSlideView(Tmdb.Title t, int rank) {
+    /**
+     * Fork: one random title for the "Can't decide?" slide, from New this week and Trending, preferring titles
+     * not already on a Trending slide. Kept across redraws until the next resume.
+     */
+    private Tmdb.Title pickTitle(List<Tmdb.Title> shown) {
+        // Titles are parsed per list (no equals), so the same title in both lists is matched by its backdrop.
+        java.util.Set<String> onTrending = new java.util.HashSet<>();
+        for (Tmdb.Title t : shown) onTrending.add(t.backdrop);
+        List<Tmdb.Title> pool = new ArrayList<>();
+        for (Tmdb.Title t : feed.newThisWeek()) if (!onTrending.contains(t.backdrop)) pool.add(t);
+        if (pool.isEmpty()) pool.addAll(shown);
+        if (pool.isEmpty()) return null;
+        for (Tmdb.Title t : pool) if (t.backdrop.equals(pickKey)) return t;
+        Tmdb.Title t = pool.get(new java.util.Random().nextInt(pool.size()));
+        pickKey = t.backdrop;
+        return t;
+    }
+
+    private View titleSlideView(Tmdb.Title t, String kindLabel) {
         FrameLayout s = new FrameLayout(act);
         Bitmap b = artFor(t, px(572));
         if (b != null) {
@@ -710,7 +746,7 @@ final class LgHome {
         wash.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
                 new int[]{0xF20A080C, (color & 0x00FFFFFF) | 0x40000000, 0x000A080C}));
         s.addView(wash, new FrameLayout.LayoutParams(-1, -1));
-        TextView kind = text(act.getString(R.string.lg_trending_rank, rank), 12, R.string.font_medium, 0xB3FFFFFF);
+        TextView kind = text(kindLabel, 12, R.string.font_medium, 0xB3FFFFFF);
         kind.setAllCaps(true);
         kind.setLetterSpacing(0.16f);
         place(s, kind, 30, 22, 400, -1);

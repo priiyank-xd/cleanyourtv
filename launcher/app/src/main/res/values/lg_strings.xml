@@ -34,6 +34,7 @@
     <string name="lg_new_this_week_no_key" translatable="false">Add a TMDB key to see new titles</string>
     <string name="lg_new_this_week_offline" translatable="false">Connect to the internet to see what\'s new</string>
     <string name="lg_trending_rank" translatable="false">Trending now \u00b7 #%1$d</string>
+    <string name="lg_pick" translatable="false">Can\'t decide? Try this</string>
     <string name="lg_movie" translatable="false">Movie</string>
     <string name="lg_series" translatable="false">Series</string>
     <string name="lg_on_app" translatable="false">on %1$s</string>
