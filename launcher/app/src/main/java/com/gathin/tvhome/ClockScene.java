@@ -170,6 +170,11 @@ final class ClockScene {
                 // As the image, not the background: a background is stretched to the view, so a picture of
                 // another shape than the screen would be distorted. centerCrop scales and crops it like Home.
                 ambient.setBackground(null);
+                // A picture far from the screen's shape (a portrait photo) would lose most of itself to the
+                // crop: show it whole on black instead. Near-screen shapes (3:2, 4:3) still fill the screen.
+                float picture = (float) bmp.getWidth() / bmp.getHeight(), screen = (float) w / h;
+                ambient.setScaleType(picture < screen * 0.75f || picture > screen * 1.33f
+                        ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER_CROP);
                 ambient.setImageDrawable(new LayerDrawable(new Drawable[]{
                         new BitmapDrawable(res, bmp), new ColorDrawable(shade)}));
             });
